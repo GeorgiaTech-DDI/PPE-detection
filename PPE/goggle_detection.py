@@ -22,7 +22,6 @@ try:
         preprocess,
         visualize,
         FrameRateTracker,
-        stop_after_timeout,
     )
     from hailo_apps.python.core.common.defines import (
         MAX_INPUT_QUEUE_SIZE,
