@@ -1,5 +1,9 @@
 .venv/
 .vscode/
 
+# Logs
+hailort.1.log
+hailort.log
+
 # For mac
 .DS_Store
