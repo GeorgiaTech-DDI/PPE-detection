@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import cv2
 import os
 import sys
 import queue
@@ -9,6 +10,9 @@ import numpy as np
 from pathlib import Path
 import collections
 import sys
+from common.tools import PiCamera2CaptureAdapter, init_rpicam2
+# TODO: Remove dependency on hailo-apps as it is a large, unweildy, and possibly unreliable library
+# HailoRT's python API is much more barebones but is also more well-maintained.
 sys.path.append("/home/pi/hailo-apps")
 try:
     from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
@@ -16,12 +20,12 @@ try:
     from hailo_apps.python.core.common.toolbox import (
         InputContext,
         VisualizationSettings,
-        init_input_source,
         get_labels,
         load_json_file,
         preprocess,
         visualize,
         FrameRateTracker,
+        InputType,
     )
     from hailo_apps.python.core.common.defines import (
         MAX_INPUT_QUEUE_SIZE,
@@ -122,8 +126,22 @@ def run_inference_pipeline(net, labels, input_context: InputContext,
     labels = get_labels(labels)
     config_data = load_json_file("config.json")
 
-    # Initialize input source from string: "camera", video file, or image folder.
-    input_context = init_input_source(input_context)
+    # Initialize rpicam2 using copy-pasted hailo-apps code
+    # TODO: Uses a lot of copy-pasted code from hailo-apps,
+    # maybe replace with something less dodgy
+    input_context.cap = init_rpicam2()
+    input_context.input_type = InputType.RPI_CAMERA
+    input_context.source_fps = 30
+    if input_context.cap is not None:
+        input_context.width = int(input_context.cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        input_context.height = int(input_context.cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+
+    input_context.cap_processing_mode = select_cap_processing_mode(
+        input_type=input_context.input_type.value,
+        frame_rate=input_context.frame_rate,
+        source_fps=input_context.source_fps,
+        video_unpaced=input_context.video_unpaced,
+    )
 
     stop_event = threading.Event()
     tracker = None
