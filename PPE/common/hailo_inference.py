@@ -4,7 +4,7 @@ import threading
 import numpy as np
 from functools import partial
 from hailo_platform import VDevice, FormatType
-from data_classes import InputContext
+from .data_classes import InputContext
 
 logger = logging.getLogger("google_detection_logger")
 

@@ -17,6 +17,7 @@ sys.path.append("/home/pi/hailo-apps")
 try:
     from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
     from hailo_apps.python.core.common.hailo_inference import HailoInfer
+    from hailo_apps.python.core.common.camera_utils import select_cap_processing_mode
     from hailo_apps.python.core.common.toolbox import (
         InputContext,
         VisualizationSettings,
