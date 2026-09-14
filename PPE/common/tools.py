@@ -5,6 +5,8 @@ import threading
 class PiCamera2CaptureAdapter:
     """
     Adapter that makes Picamera2 behave like cv2.VideoCapture.
+    Copy of hailo-apps.python.common.camera_utils.PiCamera2CaptureAdapter
+    Threading fixed to work on our system.
     """
 
     def __init__(self, picam2):
