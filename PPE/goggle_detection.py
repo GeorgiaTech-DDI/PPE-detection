@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import cv2
 import os
 import sys
 import queue
@@ -9,18 +10,23 @@ import numpy as np
 from pathlib import Path
 import collections
 import sys
+from common.tools import PiCamera2CaptureAdapter, init_rpicam2
+# TODO: Remove dependency on hailo-apps as it is a large, unweildy, and possibly unreliable library
+# HailoRT's python API is much more barebones but is also more well-maintained.
 sys.path.append("/home/pi/hailo-apps")
 try:
     from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
     from hailo_apps.python.core.common.hailo_inference import HailoInfer
+    from hailo_apps.python.core.common.camera_utils import select_cap_processing_mode
     from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
+        InputContext,
+        VisualizationSettings,
         get_labels,
         load_json_file,
         preprocess,
         visualize,
-        select_cap_processing_mode,
         FrameRateTracker,
+        InputType,
     )
     from hailo_apps.python.core.common.defines import (
         MAX_INPUT_QUEUE_SIZE,
@@ -112,20 +118,31 @@ def parse_args():
     return args
 
 
-def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,  
-          save_output=False, camera_resolution="sd", output_resolution=None,
-          enable_tracking=False, show_fps=False, frame_rate=None, draw_trail=False) -> None:
+def run_inference_pipeline(net, labels, input_context: InputContext,
+                           visualization_settings: VisualizationSettings,
+          enable_tracking=False, show_fps=False, draw_trail=False) -> None:
     """
     Initialize queues, HailoAsyncInference instance, and run the inference.
     """
     labels = get_labels(labels)
     config_data = load_json_file("config.json")
 
-    # Initialize input source from string: "camera", video file, or image folder.
-    cap, images, input_type = init_input_source(input_src, batch_size, camera_resolution)
-    cap_processing_mode = None
-    if cap is not None:
-        cap_processing_mode = select_cap_processing_mode(input_type, save_output, frame_rate)
+    # Initialize rpicam2 using copy-pasted hailo-apps code
+    # TODO: Uses a lot of copy-pasted code from hailo-apps,
+    # maybe replace with something less dodgy
+    input_context.cap = init_rpicam2()
+    input_context.input_type = InputType.RPI_CAMERA
+    input_context.source_fps = 30
+    if input_context.cap is not None:
+        input_context.width = int(input_context.cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        input_context.height = int(input_context.cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+
+    input_context.cap_processing_mode = select_cap_processing_mode(
+        input_type=input_context.input_type.value,
+        frame_rate=input_context.frame_rate,
+        source_fps=input_context.source_fps,
+        video_unpaced=input_context.video_unpaced,
+    )
 
     stop_event = threading.Event()
     tracker = None
@@ -146,16 +163,15 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
         config_data=config_data, tracker=tracker, draw_trail=draw_trail
     )
 
-    hailo_inference = HailoInfer(net, batch_size)
-    height, width, _ = hailo_inference.get_input_shape()
+    hailo_inference = HailoInfer(net, input_context.batch_size)
+    input_context.height, input_context.width, _ = hailo_inference.get_input_shape()
 
     preprocess_thread = threading.Thread(
-        target=preprocess, args=(images, cap, frame_rate, batch_size, input_queue, width, height, cap_processing_mode, None, stop_event)
+        target=preprocess, args=(input_context, input_queue, input_context.width, input_context.height, None, stop_event)
     )
     postprocess_thread = threading.Thread(
         target=visualize, 
-        args=(output_queue, cap, save_output, output_dir,
-               post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event)
+        args=(input_context, visualization_settings, output_queue, post_process_callback_fn, fps_tracker, stop_event)
     )
     infer_thread = threading.Thread(
         target=infer, args=(hailo_inference, input_queue, output_queue, stop_event)
@@ -176,8 +192,8 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
         logger.info(fps_tracker.frame_rate_summary())
 
     logger.success("Inference was successful!")
-    if save_output or input_src.lower() not in ("usb", "rpi"):
-        logger.info(f"Results have been saved in {output_dir}")
+    if visualization_settings.save_stream_output or input_context.input_src.lower() not in ("usb", "rpi"):
+        logger.info(f"Results have been saved in {visualization_settings.output_dir}")
 
 
 def infer(hailo_inference, input_queue, output_queue, stop_event):
@@ -268,18 +284,24 @@ def main() -> None:
     args = parse_args()
     init_logging(level=level_from_args(args))
     handle_and_resolve_args(args, APP_NAME)
+    input_context = InputContext(
+        input_src=args.input,
+        batch_size=args.batch_size,
+        resolution=args.camera_resolution,
+        frame_rate=args.frame_rate,
+    )
+    visualization_settings = VisualizationSettings(
+        output_dir=args.output_dir,
+        save_stream_output=args.save_output,
+        output_resolution=args.output_resolution,
+    )
     run_inference_pipeline(
         args.hef_path,
-        args.input,
-        args.batch_size,
         args.labels,
-        args.output_dir,
-        args.save_output,
-        args.camera_resolution,
-        args.output_resolution,
+        input_context,
+        visualization_settings,
         args.track,
         args.show_fps,
-        args.frame_rate,
         args.draw_trail
     )
 
