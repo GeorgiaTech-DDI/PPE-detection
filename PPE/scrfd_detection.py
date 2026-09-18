@@ -67,7 +67,7 @@ with VDevice() as vdevice:
         bindings.input().set_buffer(img)
 
         for i in infer_model.output_names:
-            buffer = np.zeros(infer_model.output(i).shape, dtype=np.uint8)
+            buffer = np.zeros(infer_model.output(i).shape, dtype=np.float32)
             bindings.output(i).set_buffer(buffer)
 
         # Run synchronous inference and access the output buffers
