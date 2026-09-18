@@ -55,7 +55,7 @@ with VDevice() as vdevice:
     for i in infer_model.output_names:
         print(f"{i}: {infer_model.output(i).shape}")
 
-    img = preprocess("./hide_the_pain_harold.jpg")
+    img = preprocess("hide_the_pain_harold.jpg")
 
     for name in infer_model.output_names:
         infer_model.output(name).set_format_type(FormatType.FLOAT32)
