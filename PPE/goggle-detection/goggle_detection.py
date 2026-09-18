@@ -10,7 +10,8 @@ import numpy as np
 from pathlib import Path
 import collections
 import sys
-from common.tools import PiCamera2CaptureAdapter, init_rpicam2
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "common"))
+from tools import init_rpicam2
 # TODO: Remove dependency on hailo-apps as it is a large, unweildy, and possibly unreliable library
 # HailoRT's python API is much more barebones but is also more well-maintained.
 sys.path.append("/home/pi/hailo-apps")

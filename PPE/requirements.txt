@@ -326,3 +326,4 @@ webcolors==1.13
 webencodings==0.5.1
 wheel==0.46.1
 zipp==3.21.0
+matplotlib==3.8.4
