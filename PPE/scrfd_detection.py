@@ -1,7 +1,10 @@
-import numpy as np
 import cv2
-from hailo_platform import VDevice, FormatType, ConfigureParams
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
+from hailo_platform import VDevice, FormatType, ConfigureParams
+from matplotlib.image import imread
 from scrfd_postproc import *
 
 timeout_ms = 1000
@@ -81,9 +84,33 @@ with VDevice() as vdevice:
 
         postproc = SCRFDPostProc((640,640))
 
-        outputs = [tf.convert_to_tensor(i) for i  in outputs]
+        outputs = postproc.tf_postproc([tf.convert_to_tensor(i) for i  in outputs])
+        print(outputs)
 
-        print(postproc.tf_postproc(outputs))
+        img = imread("./hide_the_pain_harold.jpg")
+        img_h, img_w = img.shape[0], img.shape[1]
+        fig, ax = plt.subplots(1)
+        ax.imshow(img)
+
+        for (x_min, y_min, x_max, y_max) in outputs["detection_boxes"]:
+            # Convert normalized coords to pixel coords
+            px_min = x_min * img_w
+            px_max = x_max * img_w
+            py_min = y_min * img_h
+            py_max = y_max * img_h
+
+            width = px_max - px_min
+            height = py_max - py_min
+
+            rect = patches.Rectangle(
+                (px_min, py_min), width, height,
+                linewidth=2, edgecolor="red", facecolor="none"
+            )
+            ax.add_patch(rect)
+
+        ax.axis("off")
+        plt.tight_layout()
+        plt.show()
 
 
 
