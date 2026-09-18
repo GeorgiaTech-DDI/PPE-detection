@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-
+import cv2
 
 
 class SCRFDPostProc(object):
@@ -31,20 +31,19 @@ class SCRFDPostProc(object):
         assert len(sorted_output_branches) % num_branches == 0, "All branches must have the same number of output nodes"
         num_output_nodes_per_branch = len(sorted_output_branches) // num_branches
         for branch_index in range(0, len(sorted_output_branches), num_output_nodes_per_branch):
-            num_of_batches, _, _, _ = tf.unstack(tf.shape(sorted_output_branches[branch_index]))
-            box_predictors_list.append(tf.reshape(sorted_output_branches[branch_index], shape=[num_of_batches, -1, 4]))
+            box_predictors_list.append(tf.reshape(sorted_output_branches[branch_index], shape=[-1, 4]))
             class_predictors_list.append(
-                tf.reshape(sorted_output_branches[branch_index + 1], shape=[num_of_batches, -1, self.NUM_CLASSES])
+                tf.reshape(sorted_output_branches[branch_index + 1], shape=[-1, self.NUM_CLASSES])
             )
 
             if num_output_nodes_per_branch > 2:
                 # Assume output is landmarks
                 landmarks_predictors_list.append(
-                    tf.reshape(sorted_output_branches[branch_index + 2], shape=[num_of_batches, -1, 10])
+                    tf.reshape(sorted_output_branches[branch_index + 2], shape=[-1, 10])
                 )
-        box_predictors = tf.concat(box_predictors_list, axis=1)
-        class_predictors = tf.concat(class_predictors_list, axis=1)
-        landmarks_predictors = tf.concat(landmarks_predictors_list, axis=1) if landmarks_predictors_list else None
+        box_predictors = tf.concat(box_predictors_list, axis=0)
+        class_predictors = tf.concat(class_predictors_list, axis=0)
+        landmarks_predictors = tf.concat(landmarks_predictors_list, axis=0) if landmarks_predictors_list else None
         return box_predictors, class_predictors, landmarks_predictors
 
     def extract_anchors(self, min_sizes, steps):
@@ -90,26 +89,17 @@ class SCRFDPostProc(object):
 
             detection_scores = classes_predictions
 
-            batch_size, num_proposals = tf.unstack(tf.slice(tf.shape(box_predictions), [0], [2]))
-
-            tiled_anchor_boxes = tf.tile(tf.expand_dims(self._anchors, 0), [batch_size, 1, 1])
-            tiled_anchors_boxlist = tf.reshape(tiled_anchor_boxes, [-1, 4])
-
-            decoded_boxes = self._decode_boxes(tf.reshape(box_predictions, (-1, 4)), tiled_anchors_boxlist)
-            detection_boxes = tf.reshape(decoded_boxes, [batch_size, num_proposals, 4])
+            decoded_boxes = self._decode_boxes(box_predictions, self._anchors)
+            detection_boxes = decoded_boxes
 
             decoded_landmarks = None
             if tf.is_tensor(landmarks_predictors):
-                decoded_landmarks = self._decode_landmarks(
-                    tf.reshape(landmarks_predictors, (-1, 10)), tiled_anchors_boxlist
-                )
-                decoded_landmarks = tf.reshape(decoded_landmarks, [batch_size, num_proposals, 10])
+                decoded_landmarks = self._decode_landmarks(landmarks_predictors, self._anchors)
                 additional_fields["landmarks"] = decoded_landmarks
 
-            detection_boxes = tf.identity(tf.expand_dims(detection_boxes, axis=[2]), "raw_box_locations")
-            scores = classes_predictions[0, :, 0].numpy()
-            boxes = detection_boxes[0].numpy()
-            landmarks = decoded_landmarks[0].numpy() if decoded_landmarks is not None else None
+            scores = classes_predictions[:, 0].numpy()
+            boxes = detection_boxes.numpy()
+            landmarks = decoded_landmarks.numpy() if decoded_landmarks is not None else None
 
             keep = scores >= self._score_threshold
 
@@ -148,10 +138,5 @@ class SCRFDPostProc(object):
 
         if landmarks is not None:
             results["face_landmarks"] = landmarks
-
-        nmsed_additional_fields = nmsed_additional_fields or {}
-        face_landmarks = nmsed_additional_fields.get("landmarks")
-        if tf.is_tensor(face_landmarks):
-            results["face_landmarks"] = face_landmarks
 
         return results
