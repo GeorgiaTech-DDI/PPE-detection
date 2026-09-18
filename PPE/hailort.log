@@ -244,3 +244,27 @@
 [2026-09-17 20:19:00.419] [3409] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
 [2026-09-17 20:19:00.674] [3409] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
 [2026-09-17 20:19:00.674] [3409] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:49:40.798] [3559] [HailoRT] [info] [vdevice.cpp:227] [create] Creating vdevice with params: device_count: 1, scheduling_algorithm: ROUND_ROBIN, multi_process_service: false
+[2026-09-17 20:49:40.821] [3559] [HailoRT] [info] [device.cpp:53] [Device] OS Version: Linux 6.18.39+rpt-rpi-2712 #1 SMP PREEMPT Debian 1:6.18.39-1+rpt1 (2026-07-29) aarch64
+[2026-09-17 20:49:40.849] [3559] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:49:40.849] [3559] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:49:41.091] [3559] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:49:41.091] [3559] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:53:28.485] [3668] [HailoRT] [info] [vdevice.cpp:227] [create] Creating vdevice with params: device_count: 1, scheduling_algorithm: ROUND_ROBIN, multi_process_service: false
+[2026-09-17 20:53:28.520] [3668] [HailoRT] [info] [device.cpp:53] [Device] OS Version: Linux 6.18.39+rpt-rpi-2712 #1 SMP PREEMPT Debian 1:6.18.39-1+rpt1 (2026-07-29) aarch64
+[2026-09-17 20:53:28.600] [3668] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:53:28.600] [3668] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:53:28.863] [3668] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:53:28.863] [3668] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:53:52.690] [3690] [HailoRT] [info] [vdevice.cpp:227] [create] Creating vdevice with params: device_count: 1, scheduling_algorithm: ROUND_ROBIN, multi_process_service: false
+[2026-09-17 20:53:52.716] [3690] [HailoRT] [info] [device.cpp:53] [Device] OS Version: Linux 6.18.39+rpt-rpi-2712 #1 SMP PREEMPT Debian 1:6.18.39-1+rpt1 (2026-07-29) aarch64
+[2026-09-17 20:53:52.804] [3690] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:53:52.804] [3690] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:53:53.036] [3690] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:53:53.036] [3690] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 21:01:15.104] [3898] [HailoRT] [info] [vdevice.cpp:227] [create] Creating vdevice with params: device_count: 1, scheduling_algorithm: ROUND_ROBIN, multi_process_service: false
+[2026-09-17 21:01:15.133] [3898] [HailoRT] [info] [device.cpp:53] [Device] OS Version: Linux 6.18.39+rpt-rpi-2712 #1 SMP PREEMPT Debian 1:6.18.39-1+rpt1 (2026-07-29) aarch64
+[2026-09-17 21:01:15.231] [3898] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 21:01:15.231] [3898] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 21:01:15.494] [3898] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 21:01:15.494] [3898] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
