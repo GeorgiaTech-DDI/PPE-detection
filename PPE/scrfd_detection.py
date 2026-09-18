@@ -44,8 +44,11 @@ with VDevice() as vdevice:
     print("VDevice created successfully")
 
     # Create an infer model from an HEF:
-    infer_model = vdevice.create_infer_model('')
-    print(f"Model loaded: input shape {infer_model.input().shape}, output shape {infer_model.output().shape}")
+    infer_model = vdevice.create_infer_model('scrfd_10g.hef')
+    print(f"Model loaded: input shape {infer_model.input().shape}")
+    print("Output shapes are:")
+    for i in infer_model.output_names:
+        print(f"{i}: {infer_model.output(i).shape}")
 
     img = preprocess("./hide_the_pain_harold.jpg")
 
@@ -58,14 +61,16 @@ with VDevice() as vdevice:
         buffer = np.zeros(infer_model.input().shape, dtype=np.uint8)
         bindings.input().set_buffer(img)
 
-        buffer = np.zeros(infer_model.output().shape, dtype=np.uint8)
-        bindings.output().set_buffer(buffer)
+        for i in infer_model.output_names:
+            buffer = np.zeros(infer_model.output(i).shape, dtype=np.uint8)
+            bindings.output(i).set_buffer(buffer)
 
         # Run synchronous inference and access the output buffers
         print("Running synchronous inference...")
         configured_infer_model.run([bindings], timeout_ms)
-        buffer = bindings.output().get_buffer()
-        print(f"Synchronous inference done - output shape: {buffer.shape}")
+        for i in infer_model.output_names:
+            buffer = bindings.output(i).get_buffer()
+            print(f"Synchronous inference done - output shape: {buffer.shape}")
 
 
 

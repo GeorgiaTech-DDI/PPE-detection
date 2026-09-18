@@ -217,4 +217,30 @@
 [2026-09-14 12:48:57.918] [1937] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: yolov8s
 [2026-09-14 12:48:57.950] [1937] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: yolov8s
 [2026-09-14 12:48:57.983] [1937] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: yolov8s
-[2026-09-14 12:48:58.018] [1937] [HailoRT] [info] [he
+[2026-09-14 12:48:58.018] [1937] [HailoRT] [info] [he[2026-09-17 20:08:19.283] [2399] [HailoRT] [info] [vdevice.cpp:227] [create] Creating vdevice with params: device_count: 1, scheduling_algorithm: ROUND_ROBIN, multi_process_service: false
+[2026-09-17 20:08:19.316] [2399] [HailoRT] [info] [device.cpp:53] [Device] OS Version: Linux 6.18.39+rpt-rpi-2712 #1 SMP PREEMPT Debian 1:6.18.39-1+rpt1 (2026-07-29) aarch64
+[2026-09-17 20:08:19.316] [2399] [HailoRT] [error] [file_utils.cpp:175] [open] CHECK failed - Failed opening file, path: 
+[2026-09-17 20:08:19.318] [2399] [HailoRT] [error] [vdevice_hrpc_client.cpp:157] [create_infer_model] CHECK_SUCCESS failed with status=HAILO_OPEN_FILE_FAILURE(13)
+[2026-09-17 20:09:53.638] [3191] [HailoRT] [info] [vdevice.cpp:227] [create] Creating vdevice with params: device_count: 1, scheduling_algorithm: ROUND_ROBIN, multi_process_service: false
+[2026-09-17 20:09:53.683] [3191] [HailoRT] [info] [device.cpp:53] [Device] OS Version: Linux 6.18.39+rpt-rpi-2712 #1 SMP PREEMPT Debian 1:6.18.39-1+rpt1 (2026-07-29) aarch64
+[2026-09-17 20:09:53.764] [3191] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:09:53.764] [3191] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:09:53.765] [3191] [HailoRT] [error] [infer_model.cpp:478] [output] CHECK failed - Model has more than one output!
+[2026-09-17 20:12:08.026] [3209] [HailoRT] [info] [vdevice.cpp:227] [create] Creating vdevice with params: device_count: 1, scheduling_algorithm: ROUND_ROBIN, multi_process_service: false
+[2026-09-17 20:12:08.049] [3209] [HailoRT] [info] [device.cpp:53] [Device] OS Version: Linux 6.18.39+rpt-rpi-2712 #1 SMP PREEMPT Debian 1:6.18.39-1+rpt1 (2026-07-29) aarch64
+[2026-09-17 20:12:08.071] [3209] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:12:08.071] [3209] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:12:08.071] [3209] [HailoRT] [error] [infer_model.cpp:478] [output] CHECK failed - Model has more than one output!
+[2026-09-17 20:16:10.687] [3313] [HailoRT] [info] [vdevice.cpp:227] [create] Creating vdevice with params: device_count: 1, scheduling_algorithm: ROUND_ROBIN, multi_process_service: false
+[2026-09-17 20:16:10.711] [3313] [HailoRT] [info] [device.cpp:53] [Device] OS Version: Linux 6.18.39+rpt-rpi-2712 #1 SMP PREEMPT Debian 1:6.18.39-1+rpt1 (2026-07-29) aarch64
+[2026-09-17 20:16:10.778] [3313] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:16:10.778] [3313] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:16:11.218] [3313] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:16:11.218] [3313] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:16:11.221] [3313] [HailoRT] [error] [infer_model.cpp:478] [output] CHECK failed - Model has more than one output!
+[2026-09-17 20:19:00.328] [3409] [HailoRT] [info] [vdevice.cpp:227] [create] Creating vdevice with params: device_count: 1, scheduling_algorithm: ROUND_ROBIN, multi_process_service: false
+[2026-09-17 20:19:00.352] [3409] [HailoRT] [info] [device.cpp:53] [Device] OS Version: Linux 6.18.39+rpt-rpi-2712 #1 SMP PREEMPT Debian 1:6.18.39-1+rpt1 (2026-07-29) aarch64
+[2026-09-17 20:19:00.418] [3409] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:19:00.419] [3409] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:19:00.674] [3409] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
+[2026-09-17 20:19:00.674] [3409] [HailoRT] [info] [hef.cpp:1963] [get_network_group_and_network_name] No name was given. Addressing all networks of default network_group: scrfd_10g
