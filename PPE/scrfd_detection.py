@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from hailo_platform import VDevice
+from hailo_platform import VDevice, FormatType, ConfigureParams
 
 from scrfd_postproc import *
 
@@ -53,6 +53,9 @@ with VDevice() as vdevice:
         print(f"{i}: {infer_model.output(i).shape}")
 
     img = preprocess("./hide_the_pain_harold.jpg")
+
+    for name in infer_model.output_names:
+        infer_model.output(name).set_format_type(FormatType.FLOAT32)
 
     # Configure the infer model and create bindings for it
     with infer_model.configure() as configured_infer_model:
