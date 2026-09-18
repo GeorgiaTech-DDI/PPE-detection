@@ -9,7 +9,11 @@ class SCRFDPostProc(object):
     NUM_LANDMARKS = 10
     LABEL_OFFSET = 1
 
-    def __init__(self, image_dims=(300, 300), nms_iou_thresh=0.6, score_threshold=0.3, anchors=None):
+    def __init__(self, image_dims=(300, 300), nms_iou_thresh=0.6, score_threshold=0.3, anchors={
+    "steps": [8, 16, 32],
+    "min_sizes": [[16, 32], [64, 128], [256, 512]],
+}
+):
         self._image_dims = image_dims
         self._nms_iou_thresh = nms_iou_thresh
         self._score_threshold = score_threshold
