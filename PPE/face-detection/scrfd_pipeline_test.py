@@ -16,9 +16,9 @@ infer_thread = threading.Thread(target=run_inference_pipeline, args=("scrfd_10g.
 postprocess_thread = threading.Thread(target=run_postprocess_pipeline, args=(inferences, outputs, stop_event))
 
 
-preprocess_thread.run()
-infer_thread.run()
-postprocess_thread.run()
+preprocess_thread.start()
+infer_thread.start()
+postprocess_thread.start()
 
 while True:
     input_queue.put(camera.read()[1])
