@@ -100,7 +100,7 @@ def init_rpicam2():
 
     try:
         picam2 = Picamera2()
-        width, height = 800, 600
+        width, height = 640, 480
         fps = 30
         main = {"size": (width, height), "format": "RGB888"}
         config = picam2.create_video_configuration(main=main, controls={"FrameRate": fps})
