@@ -21,7 +21,12 @@ infer_thread.run()
 postprocess_thread.run()
 
 while True:
-    input_queue.put(camera.read())
+    input_queue.put(camera.read()[1])
+    # frm = input_queue.get()
+    # # print(frm)
+    # cv2.imshow("yeet",frm)
+    # if cv2.waitKey(1) == ord('q'):
+    #     break
 
     try:
         output = outputs.get_nowait()
