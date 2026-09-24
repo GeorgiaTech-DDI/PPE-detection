@@ -66,11 +66,11 @@ def run_inference_pipeline(
         stop_event: Event used to stop this pipeline. 
     """
 
-    def callback(completion_info, bindings, result_queue):
+    def callback(completion_info, bindings, result_queue, input_frame):
         if completion_info.exception:
             raise completion_info.exception
         outputs = {
-            "input": bindings.input(),
+            "input": input_frame,
             "raw_inference": [bindings.output(name).get_buffer().copy()
             for name in infer_model.output_names]
         }
@@ -105,7 +105,7 @@ def run_inference_pipeline(
                 buffer_in[:] = frame
                 configured_infer_model.run_async(
                     [bindings], 
-                    partial(callback, bindings=bindings, result_queue=output_queue)
+                    partial(callback, bindings=bindings, result_queue=output_queue, input_frame=buffer_in.copy())
                 )
 
 
