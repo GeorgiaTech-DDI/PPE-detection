@@ -24,8 +24,11 @@ while True:
     input_queue.put(camera.read())
 
     try:
-        frame = outputs.get_nowait()
-        cv2.imshow("First Face", frame)
+        output = outputs.get_nowait()
+        frames = output.get('faces')
+        if frames:
+            frame = frames[0]
+            cv2.imshow("First Face", frame)
     except queue.Empty:
         pass
     if cv2.waitKey(1) == ord('q'):

@@ -149,7 +149,7 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
             crop_x2 = min(img_w, int(px_max + buffer))
             crop_y2 = min(img_h, int(py_max + buffer))
 
-            cropped_faces.append(input['raw_inference'][crop_y1:crop_y2, crop_x1:crop_x2])
+            cropped_faces.append(input['input'][crop_y1:crop_y2, crop_x1:crop_x2])
         # Note that we may want to apply ByteTrack here so we can identify which face belongs to who
         # That way with multiple people within range, we will still be able to detect whether someone
         # was wearing glasses in the last x time units.
