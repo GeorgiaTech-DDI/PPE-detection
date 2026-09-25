@@ -121,7 +121,7 @@ class SCRFDPostProc(object):
                 self._nms_iou_thresh
             )
 
-            indices = np.asarray(indices).flatten()
+            indices = np.asarray(indices, dtype=int).flatten()
 
             boxes = boxes[indices]
             scores = scores[indices]
