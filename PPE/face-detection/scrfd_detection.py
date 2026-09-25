@@ -100,7 +100,7 @@ def run_inference_pipeline(
             bindings.input().set_buffer(buffer_in)
             for name in infer_model.output_names:
                 out_info = infer_model.output(name)
-                bindings.output(name).set_buffer(np.empty(out_info.shape, dtype=out_info.dtype))
+                bindings.output(name).set_buffer(np.empty(out_info.shape, dtype=np.float32))
 
             # Spin the thread (Wheeeeeeee!)
             while not stop_event.is_set():
