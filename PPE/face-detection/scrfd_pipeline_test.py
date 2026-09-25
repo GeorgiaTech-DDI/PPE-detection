@@ -2,7 +2,7 @@ from common.tools import init_rpicam2
 from scrfd_detection import *
 import threading
 
-camera = init_rpicam2()
+camera = init_rpicam2(640, 480)
 
 stop_event = threading.Event()
 

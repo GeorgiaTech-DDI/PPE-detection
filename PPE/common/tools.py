@@ -85,7 +85,7 @@ def init_input_source(input_context: InputContext) -> cv2.VideoCapture:
     return input_context
 
 
-def init_rpicam2():
+def init_rpicam2(width: int, height: int):
     """
     Open Raspberry Pi camera using Picamera2.
 
@@ -100,7 +100,6 @@ def init_rpicam2():
 
     try:
         picam2 = Picamera2()
-        width, height = 640, 480
         fps = 30
         main = {"size": (width, height), "format": "RGB888"}
         config = picam2.create_video_configuration(main=main, controls={"FrameRate": fps})

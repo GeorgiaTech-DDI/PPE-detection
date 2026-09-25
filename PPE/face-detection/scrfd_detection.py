@@ -42,6 +42,13 @@ def preprocess(image: np.ndarray):
     return np.ascontiguousarray(image)
 
 def run_preprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue, stop_event: threading.Event):
+    """
+    Spins a thread which performs continuous preprocessing as frames come in.
+    Params:
+        input_queue: Queue of np.ndarray representing image frames in the format typically produced by OpenCV
+        output_queue: Queue of preprocessed frames as np.ndarray. These are scaled to 640x640 for inference
+        stop_event: threading.Event which stops this thread.
+    """
     while not stop_event.is_set():
         try:
             input = input_queue.get()
@@ -70,7 +77,7 @@ def run_inference_pipeline(
         if completion_info.exception:
             raise completion_info.exception
         outputs = {
-            "input": input_frame,
+            "frame": input_frame,
             "raw_inference": [bindings.output(name).get_buffer().copy()
             for name in infer_model.output_names]
         }
@@ -114,9 +121,10 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
     """
     Postprocesses frames from SCRFD detection. Expects all postprocessing to be done on 640x640 frames.
     Params:
-        input_queue: Queue containing dicts with "input" mapped to the inference input, "raw_inference" to its output.
+        input_queue: Queue containing dicts with "frame" mapped to the inference input, "raw_inference" to its output.
         output_queue: Queue for postprocessed frames and inferences with NMS applied.
             Contains labels "inferences" for postprocessed inferences and "faces" for cropped face images.
+            Additionally contains label "frame" for the original frame that was given
         stop_event: threading.Event to stop this pipeline.
     """
     postproc = SCRFDPostProc((640,640))
@@ -129,12 +137,12 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
 
         output = {}
 
-        output['inferences'] = postproc.tf_postproc([tf.convert_to_tensor(i) for i in input["raw_inference"]])
-        img_h, img_w = input["input"].shape[0], input["input"].shape[1]
+        output["inferences"] = postproc.tf_postproc([tf.convert_to_tensor(i) for i in input["raw_inference"]])
+        img_h, img_w = input["frame"].shape[0], input["frame"].shape[1]
 
         buffer = 20
         cropped_faces = []
-        for (x_min, y_min, x_max, y_max) in output['inferences']["detection_boxes"]:
+        for (x_min, y_min, x_max, y_max) in output["inferences"]["detection_boxes"]:
             # Convert normalized coords to pixel coords
             px_min = x_min * img_w
             px_max = x_max * img_w
@@ -149,90 +157,12 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
             crop_x2 = min(img_w, int(px_max + buffer))
             crop_y2 = min(img_h, int(py_max + buffer))
 
-            cropped_faces.append(input['input'][crop_y1:crop_y2, crop_x1:crop_x2])
+            cropped_faces.append(input["frame"][crop_y1:crop_y2, crop_x1:crop_x2])
         # Note that we may want to apply ByteTrack here so we can identify which face belongs to who
         # That way with multiple people within range, we will still be able to detect whether someone
         # was wearing glasses in the last x time units.
         # Also we need to add logic that ignores faces too far away
         output["faces"] = cropped_faces
+        output["frame"] = input["frame"]
 
         output_queue.put(output)
-
-
-
-
-
-
-# The vdevice is used as a context manager ("with" statement) to ensure it's released on time.
-# with VDevice() as vdevice:
-#     print("VDevice created successfully")
-
-#     # Create an infer model from an HEF:
-#     infer_model = vdevice.create_infer_model('scrfd_10g.hef')
-#     print(f"Model loaded: input shape {infer_model.input().shape}")
-#     print("Output shapes are:")
-#     for i in infer_model.output_names:
-#         print(f"{i}: {infer_model.output(i).shape}")
-
-#     img = preprocess("hide_the_pain_harold.jpg")
-
-#     for name in infer_model.output_names:
-#         infer_model.output(name).set_format_type(FormatType.FLOAT32)
-
-#     # Configure the infer model and create bindings for it
-#     with infer_model.configure() as configured_infer_model:
-#         print("Model configured")
-#         bindings = configured_infer_model.create_bindings()
-
-#         # Set input and output buffers
-#         buffer = np.zeros(infer_model.input().shape, dtype=np.uint8)
-#         bindings.input().set_buffer(img)
-
-#         for i in infer_model.output_names:
-#             buffer = np.zeros(infer_model.output(i).shape, dtype=np.float32)
-#             bindings.output(i).set_buffer(buffer)
-
-#         # Run synchronous inference and access the output buffers
-#         print("Running synchronous inference...")
-#         configured_infer_model.run([bindings], timeout_ms)
-#         outputs = []
-#         for i in infer_model.output_names:
-#             buffer = bindings.output(i).get_buffer()
-#             outputs.append(bindings.output(i).get_buffer())
-#             print(f"Synchronous inference done - output shape: {buffer.shape}")
-
-#         postproc = SCRFDPostProc((640,640))
-
-#         outputs = postproc.tf_postproc([tf.convert_to_tensor(i) for i  in outputs])
-#         print(outputs)
-
-#         img = imread("./hide_the_pain_harold.jpg")
-#         img_h, img_w = img.shape[0], img.shape[1]
-#         fig, ax = plt.subplots(1)
-#         ax.imshow(img)
-
-#         for (x_min, y_min, x_max, y_max) in outputs["detection_boxes"]:
-#             # Convert normalized coords to pixel coords
-#             px_min = x_min * img_w
-#             px_max = x_max * img_w
-#             py_min = y_min * img_h
-#             py_max = y_max * img_h
-
-#             width = px_max - px_min
-#             height = py_max - py_min
-
-#             rect = patches.Rectangle(
-#                 (px_min, py_min), width, height,
-#                 linewidth=2, edgecolor="red", facecolor="none"
-#             )
-#             ax.add_patch(rect)
-
-#         ax.axis("off")
-#         plt.tight_layout()
-#         plt.show()
-
-
-
-
-
-
