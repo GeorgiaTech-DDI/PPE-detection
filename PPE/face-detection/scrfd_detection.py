@@ -84,7 +84,7 @@ with VDevice() as vdevice:
 
         postproc = SCRFDPostProc((640,640))
 
-        outputs = postproc.tf_postproc([tf.convert_to_tensor(i) for i  in outputs])
+        outputs = postproc.postprocess(outputs)
         print(outputs)
 
         img = imread("./hide_the_pain_harold.jpg")
