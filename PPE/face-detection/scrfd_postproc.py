@@ -8,7 +8,7 @@ def get_default_anchors():
     }
 
 
-class SCRFDPostProc(object):
+class SCRFDPostProc:
     # The following params are corresponding to those used for training the model
     NUM_CLASSES = 1
     NUM_LANDMARKS = 10
