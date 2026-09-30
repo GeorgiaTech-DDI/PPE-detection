@@ -10,7 +10,8 @@ from matplotlib.image import imread
 from scrfd_postproc import *
 from functools import partial
 
-timeout_ms = 1000
+TIMEOUT_MS = 1000
+CROP_BUFFER = 20
 
 
 # Takes whatever size input, scales to 640x640 with letterboxes.
@@ -140,7 +141,6 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
         output["inferences"] = postproc.postprocess(input["raw_inference"])
         img_h, img_w = input["frame"].shape[0], input["frame"].shape[1]
 
-        buffer = 20
         cropped_faces = []
         for (x_min, y_min, x_max, y_max) in output["inferences"]["detection_boxes"]:
             # Convert normalized coords to pixel coords
@@ -152,10 +152,10 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
             width = px_max - px_min
             height = py_max - py_min
 
-            crop_x1 = max(0, int(px_min - buffer))
-            crop_y1 = max(0, int(py_min - buffer))
-            crop_x2 = min(img_w, int(px_max + buffer))
-            crop_y2 = min(img_h, int(py_max + buffer))
+            crop_x1 = max(0, int(px_min - CROP_BUFFER))
+            crop_y1 = max(0, int(py_min - CROP_BUFFER))
+            crop_x2 = min(img_w, int(px_max + CROP_BUFFER))
+            crop_y2 = min(img_h, int(py_max + CROP_BUFFER))
 
             cropped_faces.append(input["frame"][crop_y1:crop_y2, crop_x1:crop_x2])
         # Note that we may want to apply ByteTrack here so we can identify which face belongs to who
