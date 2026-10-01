@@ -138,7 +138,7 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
 
         output = {}
 
-        output["inferences"] = postproc.tf_postproc([tf.convert_to_tensor(i) for i in input["raw_inference"]])
+        output["inferences"] = postproc.postprocess(input["raw_inference"])
         img_h, img_w = input["frame"].shape[0], input["frame"].shape[1]
 
         cropped_faces = []
