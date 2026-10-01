@@ -34,6 +34,8 @@ while True:
         frames = output.get('faces')
         inferences = output.get('inferences')
         if frames and inferences:
+            if (inferences["within_1m"][0] == False):
+                continue
             det = inferences["detection_boxes"][0]
             rows.append({
                 "width": det[2] - det[0],
