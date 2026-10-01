@@ -91,12 +91,25 @@ class SCRFDPostProc:
         if landmarks_predictors is not None:
             landmarks = self._decode_landmarks(landmarks_predictors, self._anchors)
 
-        indices = cv2.dnn.NMSBoxes(
-            boxes.tolist(),
-            scores.tolist(),
-            self._score_threshold,
-            self._nms_iou_thresh
-        )
+        keep = scores > self._score_threshold
+        boxes, scores = boxes[keep], scores[keep]
+        if landmarks is not None:
+            landmarks = landmarks[keep]
+
+        if (len(scores) > 0):
+            xywh = np.stack([boxes[:, 0], boxes[:, 1],
+                     boxes[:, 2] - boxes[:, 0],
+                     boxes[:, 3] - boxes[:, 1]], axis=-1)
+
+            indices = cv2.dnn.NMSBoxes(
+                xywh.tolist(),
+                scores.tolist(),
+                self._score_threshold,
+                self._nms_iou_thresh
+            )
+            indices = np.array(indices, dtype=int).reshape(-1)
+        else:
+            indices = np.array([], dtype=int)
         boxes = boxes[indices]
         scores = scores[indices]
         if landmarks is not None:
