@@ -2,6 +2,8 @@ from common.tools import init_rpicam2
 from scrfd_detection import *
 import threading
 
+import pandas as pd
+
 camera = init_rpicam2(1920, 1080)
 
 stop_event = threading.Event()
@@ -22,8 +24,6 @@ postprocess_thread = threading.Thread(target=run_postprocess_pipeline, args=(inf
 preprocess_thread.start()
 infer_thread.start()
 postprocess_thread.start()
-
-import pandas as pd
 
 rows = []
 
