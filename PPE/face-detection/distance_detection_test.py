@@ -35,11 +35,11 @@ while True:
         output = outputs.get_nowait()
         frames = output.get('faces')
         inferences = output.get('inferences')
-        if frames:
+        if frames and inferences:
             frame = frames[0]
-            inference = inferences[0]
-            print(f"Width of face: {inference[2] - inference[0]}")
-            print(f"Height of face: {inference[3] - inference[1]}")
+            inference = inferences['detection_boxes'][0]
+            # print(f"Width of face: {inference[2] - inference[0]}")
+            # print(f"Height of face: {inference[3] - inference[1]}")
             cv2.imshow("First Face", frame)
     except queue.Empty:
         pass
