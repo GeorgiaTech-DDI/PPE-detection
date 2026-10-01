@@ -32,9 +32,9 @@ while True:
     try:
         output = outputs.get_nowait()
         frames = output.get('faces')
-        dets = output.get('inferences')
-        if frames and dets:
-            det = dets[0]
+        inferences = output.get('inferences')
+        if frames and inferences:
+            det = inferences["detection_boxes"][0]
             rows.append({
                 "width": det[2] - det[0],
                 "height": det[3] - det[1],
@@ -45,10 +45,10 @@ while True:
     if cv2.waitKey(1) == ord('q'):
         break
 
-stop_event.set()
+#stop_event.set()
 
-if rows:
-    df = pd.DataFrame(rows)
-    summary = df.agg(["mean", "std"])
-    pd.concat([df, summary]).to_csv("face_sizes.csv", index_label="row")
-    print(summary)
+# if rows:
+#     df = pd.DataFrame(rows)
+#     summary = df.agg(["mean", "std"])
+#     pd.concat([df, summary]).to_csv("face_sizes.csv", index_label="row")
+#     print(summary)
