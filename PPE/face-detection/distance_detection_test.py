@@ -2,6 +2,8 @@ from common.tools import init_rpicam2
 from scrfd_detection import *
 import threading
 
+import pandas as pd
+
 camera = init_rpicam2(1920, 1080)
 
 stop_event = threading.Event()
@@ -23,25 +25,30 @@ preprocess_thread.start()
 infer_thread.start()
 postprocess_thread.start()
 
+rows = []
+
 while True:
     input_queue.put(camera.read()[1])
-    # frm = input_queue.get()
-    # # print(frm)
-    # cv2.imshow("yeet",frm)
-    # if cv2.waitKey(1) == ord('q'):
-    #     break
-
     try:
         output = outputs.get_nowait()
         frames = output.get('faces')
-        inferences = output.get('inferences')
-        if frames and inferences:
-            frame = frames[0]
-            inference = inferences['detection_boxes'][0]
-            # print(f"Width of face: {inference[2] - inference[0]}")
-            # print(f"Height of face: {inference[3] - inference[1]}")
-            cv2.imshow("First Face", frame)
+        dets = output.get('inferences')
+        if frames and dets:
+            det = dets[0]
+            rows.append({
+                "width": det[2] - det[0],
+                "height": det[3] - det[1],
+            })
+            cv2.imshow("First Face", frames[0])
     except queue.Empty:
         pass
     if cv2.waitKey(1) == ord('q'):
         break
+
+stop_event.set()
+
+if rows:
+    df = pd.DataFrame(rows)
+    summary = df.agg(["mean", "std"])
+    pd.concat([df, summary]).to_csv("face_sizes.csv", index_label="row")
+    print(summary)
