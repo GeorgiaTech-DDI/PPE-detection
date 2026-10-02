@@ -17,6 +17,7 @@ MEAN_FACE_WIDTH_1M = 0.062864
 MEAN_FACE_HEIGHT_1M = 0.077907
 STDEV_FACE_WIDTH_1M = 0.007918
 STDEV_FACE_HEIGHT_1M = 0.014038
+MIN_Z_SCORE = -1.5
 
 # Takes whatever size input, scales to 640x640 with letterboxes.
 # Returns Numpy ndarray
@@ -155,7 +156,7 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
             width_z = (width - MEAN_FACE_WIDTH_1M) / STDEV_FACE_WIDTH_1M
             height_z = (height - MEAN_FACE_HEIGHT_1M) / STDEV_FACE_HEIGHT_1M
 
-            within_1m.append(True if width_z > -2 or height_z > -2 else False)
+            within_1m.append(True if width_z > MIN_Z_SCORE or height_z > MIN_Z_SCORE else False)
 
             # Convert normalized coords to pixel coords
             px_min = x_min * img_w

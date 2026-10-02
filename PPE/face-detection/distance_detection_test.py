@@ -47,8 +47,8 @@ while True:
     if cv2.waitKey(1) == ord('q'):
         break
 
-#stop_event.set()
-
+stop_event.set()
+exit()
 # if rows:
 #     df = pd.DataFrame(rows)
 #     summary = df.agg(["mean", "std"])
