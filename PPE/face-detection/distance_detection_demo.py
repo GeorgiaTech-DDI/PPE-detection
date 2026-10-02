@@ -5,13 +5,27 @@ import argparse
 
 import pandas as pd
 
+"""
+Demonstrates distance detection mechanism.
+Distance detection 
+"""
 parser = argparse.ArgumentParser()
-parser.add_argument("--data-gathering", action="store_true", help="Record face sizes at a given distance instead of running detection")
+parser.add_argument(
+    "--save", 
+    action="store_true", 
+    help="Record face sizes to a specified distance"
+)
+parser.add_argument(
+    "--dist",
+    type=str,
+    help="Distance from camera to subject for testing"
+)
 args = parser.parse_args()
 
-DATA_GATHERING = args.data_gathering
+SAVE_DATA = args.save
+dist = args.dist
 
-if DATA_GATHERING:
+if SAVE_DATA and not dist:
     dist = input("What distance is this data for? ")
 
 camera = init_rpicam2(1920, 1080)
@@ -44,7 +58,7 @@ while True:
         frames = output.get('faces')
         inferences = output.get('inferences')
         if frames and inferences:
-            if DATA_GATHERING:
+            if SAVE_DATA:
                 det = inferences["detection_boxes"][0]
                 rows.append({
                     "width": det[2] - det[0],
@@ -63,7 +77,7 @@ while True:
 
 stop_event.set()
 
-if DATA_GATHERING:
+if SAVE_DATA:
     if rows:
         df = pd.DataFrame(rows)
         df.to_csv(f"face_sizes_{dist}.csv", index=False)
