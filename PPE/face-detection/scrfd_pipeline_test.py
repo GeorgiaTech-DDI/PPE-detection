@@ -19,7 +19,7 @@ preprocess_thread = threading.Thread(target=run_preprocess_pipeline, args=(input
 infer_thread = threading.Thread(target=run_inference_pipeline, args=(hef_path,preprocessed_frames, inferences, stop_event))
 postprocess_thread = threading.Thread(target=run_postprocess_pipeline, args=(inferences, outputs, stop_event))
 tracking_thread = threading.Thread(target=run_tracking_pipeline, args=(outputs, tracked_outputs, stop_event))
-
+windows_cleared = False
 
 preprocess_thread.start()
 infer_thread.start()
@@ -27,7 +27,8 @@ postprocess_thread.start()
 tracking_thread.start()
 
 while True:
-    input_queue.put(camera.read()[1])
+    frame = camera.read()[1]
+    input_queue.put(frame)
     # frm = input_queue.get()
     # # print(frm)
     # cv2.imshow("yeet",frm)
@@ -35,11 +36,18 @@ while True:
     #     break
 
     try:
-        tracked = tracked_outputs.get_nowait()
+        faces = tracked_outputs.get_nowait()["faces_by_track_id"]
+        if len(faces) == 0 and not windows_cleared:
+            cv2.destroyAllWindows()
+            cv2.waitKey(1)
+            windows_cleared = True
+            print("No Faces detected: stale windows closed")
+        elif len(faces) != 0:
+            windows_cleared = False
         # Faces reappear under the same key for as long as ByteTrack keeps the
         # track alive, so this is where "was person N wearing glasses" state
         # would be kept.
-        for track_id, face in tracked["faces_by_track_id"].items():
+        for track_id, face in faces.items():
             cv2.imshow(f"Face {track_id}", face)
     except queue.Empty:
         pass

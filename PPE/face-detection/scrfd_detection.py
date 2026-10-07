@@ -268,4 +268,15 @@ def run_tracking_pipeline(input_queue: queue.Queue, output_queue: queue.Queue, s
             input = input_queue.get(timeout=0.5)
         except queue.Empty:
             continue
-        output_queue.put(track_faces(input, tracker))
+
+        result = track_faces(input, tracker)
+        output_queue.put(result)
+
+        if len(result["faces_by_track_id"]) == 0:
+            no_faces_count += 1
+        else:
+            no_faces_count = 0
+        if no_faces_count >= 20:
+            tracker.reset()
+            print("Reset Tracker")
+            no_faces_count = 0
