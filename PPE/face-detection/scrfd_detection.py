@@ -51,7 +51,7 @@ def run_preprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue,
     """
     while not stop_event.is_set():
         try:
-            input = input_queue.get()
+            input = input_queue.get(timeout=0.5) #for checking stop event
         except queue.Empty:
             continue
 
