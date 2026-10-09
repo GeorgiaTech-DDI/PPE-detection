@@ -49,21 +49,25 @@ class FrameSaver:
     """
     Periodically saves clean (un-annotated) frames to disk for building a dataset.
     Each image is saved alongside a YOLO-format label file: one "class cx cy w h" line per face, normalized to [0, 1].
+    In crop mode, only the cropped face images from the postprocess output are saved (one file per face, no labels).
     """
 
-    def __init__(self, save_dir: str, interval_s: float, save_labels: bool = True, only_with_faces: bool = False):
+    def __init__(self, save_dir: str, interval_s: float, save_labels: bool = True, only_with_faces: bool = False,
+                 crop_faces: bool = False):
         """
         Params:
             save_dir: Directory to write images (and labels) into. Created if it doesn't exist.
             interval_s: Minimum number of seconds between saved frames. 0 saves every frame.
             save_labels: Whether to write a .txt label file next to each image.
             only_with_faces: Skip frames where no face was detected.
+            crop_faces: Save each detected face crop instead of the full frame. Implies no labels.
         """
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.interval_s = interval_s
         self.save_labels = save_labels
         self.only_with_faces = only_with_faces
+        self.crop_faces = crop_faces
         self.num_saved = 0
         self._last_save = None
 
@@ -76,11 +80,19 @@ class FrameSaver:
         now = time.monotonic()
         if self._last_save is not None and now - self._last_save < self.interval_s:
             return False
-        if self.only_with_faces and output["inferences"]["num_detections"] == 0:
+        if (self.only_with_faces or self.crop_faces) and output["inferences"]["num_detections"] == 0:
             return False
 
         self._last_save = now
         stem = f"{time.strftime('%Y%m%d_%H%M%S')}_{self.num_saved:06d}"
+
+        if self.crop_faces:
+            for i, face in enumerate(output["faces"]):
+                if face.size > 0:
+                    cv2.imwrite(str(self.save_dir / f"{stem}_face{i}.jpg"), face)
+            self.num_saved += 1
+            return True
+
         cv2.imwrite(str(self.save_dir / f"{stem}.jpg"), output["frame"])
 
         if self.save_labels:

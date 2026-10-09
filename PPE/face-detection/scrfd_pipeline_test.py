@@ -10,6 +10,8 @@ parser.add_argument("--save-interval", type=float, default=None,
 parser.add_argument("--save-dir", default="captures", help="Directory to save frames into.")
 parser.add_argument("--no-labels", action="store_true", help="Don't write YOLO label files next to images.")
 parser.add_argument("--only-with-faces", action="store_true", help="Only save frames that contain a face.")
+parser.add_argument("--crop-faces", action="store_true",
+                    help="Save only the cropped face images instead of full frames (no label files).")
 args = parser.parse_args()
 
 camera = init_rpicam2(640, 480)
@@ -35,7 +37,7 @@ for t in threads:
 saver = None
 if args.save_interval is not None:
     saver = FrameSaver(args.save_dir, args.save_interval,
-                       save_labels=not args.no_labels, only_with_faces=args.only_with_faces)
+                       save_labels=not args.no_labels, only_with_faces=args.only_with_faces, crop_faces=args.crop_faces)
 visualizer = Visualizer(saver=saver)
 
 try:
