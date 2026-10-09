@@ -141,6 +141,7 @@ smbus2==0.4.3
 soupsieve==2.7
 spidev==3.6
 ssh-import-id==5.10
+supervision==0.30.7
 thonny==4.1.7
 tokenizers==0.23.2
 tomlkit==0.13.2
