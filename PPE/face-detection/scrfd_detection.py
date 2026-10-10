@@ -14,6 +14,13 @@ from functools import partial
 TIMEOUT_MS = 1000
 CROP_BUFFER = 20
 
+# Distance Estimation configuration. Height and width numbers are in normalized coordinates.
+# Minimum of -1.5 standard deviation from mean allowed before faces are dropped.
+MEAN_FACE_WIDTH_1M = 0.062864
+MEAN_FACE_HEIGHT_1M = 0.077907
+STDEV_FACE_WIDTH_1M = 0.007918
+STDEV_FACE_HEIGHT_1M = 0.014038
+MIN_Z_SCORE = -1.5
 # ByteTrack configuration. The activation threshold is deliberately aligned with the
 # SCRFD postprocessing score threshold so that every face we detect is eligible to
 # start a track instead of being dropped by the tracker on its first frame.
@@ -152,7 +159,17 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
         img_h, img_w = input["frame"].shape[0], input["frame"].shape[1]
 
         cropped_faces = []
+        within_1m = []
         for (x_min, y_min, x_max, y_max) in output["inferences"]["detection_boxes"]:
+            # Find normalized width and height, compare to mean
+            width = x_max - x_min
+            height = y_max - y_min
+
+            width_z_score = (width - MEAN_FACE_WIDTH_1M) / STDEV_FACE_WIDTH_1M
+            height_z_score = (height - MEAN_FACE_HEIGHT_1M) / STDEV_FACE_HEIGHT_1M
+
+            within_1m.append(True if width_z_score > MIN_Z_SCORE or height_z_score > MIN_Z_SCORE else False)
+
             # Convert normalized coords to pixel coords
             px_min = x_min * img_w
             px_max = x_max * img_w
@@ -172,7 +189,7 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
         # downstream of this stage. That way with multiple people within range, we
         # will still be able to tell whether someone was wearing glasses in the
         # last x time units.
-        # Also we need to add logic that ignores faces too far away
+        output["inferences"]["within_1m"] = within_1m
         output["faces"] = cropped_faces
         output["frame"] = input["frame"]
 
