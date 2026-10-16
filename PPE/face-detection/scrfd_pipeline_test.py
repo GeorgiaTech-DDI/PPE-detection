@@ -14,7 +14,7 @@ parser.add_argument("--crop-faces", action="store_true",
                     help="Save only the cropped face images instead of full frames (no label files).")
 args = parser.parse_args()
 
-camera = init_rpicam2(640, 480)
+camera = init_rpicam2(1920, 1080)
 
 stop_event = threading.Event()
 
