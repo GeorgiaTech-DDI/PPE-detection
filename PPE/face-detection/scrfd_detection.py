@@ -121,7 +121,7 @@ def run_inference_pipeline(
                     continue
 
                 buffer_in[:] = frames["lores_frame"]
-                configured_infer_model.run([bindings], timeout_ms=TIMEOUT_MS)
+                configured_infer_model.run([bindings], timeout=TIMEOUT_MS)
                 output_queue.put({
                     "lores_frame": buffer_in.copy(),
                     "hires_frame": frames["hires_frame"],

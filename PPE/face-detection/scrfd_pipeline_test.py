@@ -4,6 +4,8 @@ from visualizer import Visualizer, FrameSaver
 import argparse
 import threading
 
+FD_NETWORK = "scrfd_500m.hef"
+
 parser = argparse.ArgumentParser(description="Run SCRFD face detection with a live visualizer.")
 parser.add_argument("--save-interval", type=float, default=None,
                     help="Save a frame every N seconds (0 = every frame). Omit to disable saving.")
@@ -26,7 +28,7 @@ tracked_outputs = queue.Queue()
 
 
 from pathlib import Path
-hef_path = str(Path(__file__).resolve().parent / "scrfd_10g.hef")
+hef_path = str(Path(__file__).resolve().parent / FD_NETWORK)
 preprocess_thread = threading.Thread(target=run_preprocess_pipeline, args=(input_queue, preprocessed_frames, stop_event))
 infer_thread = threading.Thread(target=run_inference_pipeline, args=(hef_path,preprocessed_frames, inferences, stop_event))
 postprocess_thread = threading.Thread(target=run_postprocess_pipeline, args=(inferences, outputs, stop_event))
