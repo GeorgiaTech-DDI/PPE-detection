@@ -131,7 +131,7 @@ def run_inference_pipeline(net, labels, input_context: InputContext,
     # Initialize rpicam2 using copy-pasted hailo-apps code
     # TODO: Uses a lot of copy-pasted code from hailo-apps,
     # maybe replace with something less dodgy
-    input_context.cap = init_rpicam2()
+    input_context.cap = init_rpicam2(1920, 1080)
     input_context.input_type = InputType.RPI_CAMERA
     input_context.source_fps = 30
     if input_context.cap is not None:
