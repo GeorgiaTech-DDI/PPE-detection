@@ -93,7 +93,7 @@ class FrameSaver:
             self.num_saved += 1
             return True
 
-        cv2.imwrite(str(self.save_dir / f"{stem}.jpg"), output["frame"])
+        cv2.imwrite(str(self.save_dir / f"{stem}.jpg"), output["hires_frame"])
 
         if self.save_labels:
             lines = []
@@ -131,7 +131,7 @@ class Visualizer:
         """
         Builds the annotated frame for a postprocess output ({"frame", "inferences", "faces"}).
         """
-        canvas = draw_detections(output["frame"], output["inferences"], self.draw_landmarks)
+        canvas = draw_detections(output["lores_frame"], output["inferences"], self.draw_landmarks)
         status = f"FPS: {self._fps:.1f}  Faces: {output['inferences']['num_detections']}"
         if self.saver is not None:
             status += f"  Saved: {self.saver.num_saved}"
