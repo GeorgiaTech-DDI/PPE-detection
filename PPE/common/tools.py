@@ -1,4 +1,4 @@
-from .data_classes import InputContext
+from data_classes import InputContext
 import cv2
 import threading
 
