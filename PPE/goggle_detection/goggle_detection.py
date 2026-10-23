@@ -16,12 +16,11 @@ from hailo_platform import (
     VDevice,
 )
 
-from common.utils import letterbox_img
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 # Make `common` importable when running the script from any directory.
 sys.path.insert(0, str(SCRIPT_DIR.parent))
 
+from common.utils import letterbox_img
 from common.tools import init_rpicam2
 from goggle_argparse import parse_args
 from frame_rate_tracker import FrameRateTracker
