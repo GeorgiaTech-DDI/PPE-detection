@@ -110,23 +110,17 @@ def render_face_grid(face_detections: list, labels: list) -> np.ndarray:
     canvas = np.zeros((rows * TILE_SIZE, cols * TILE_SIZE, 3), dtype=np.uint8)
 
     for i, (face, detections) in enumerate(face_detections):
-        # Letterbox the crop into the square tile so faces keep their aspect ratio.
+        # Stretch the crop into the square tile, matching the model's stretched input.
         height, width = face.shape[:2]
-        scale = min(TILE_SIZE / width, TILE_SIZE / height)
-        new_width, new_height = int(width * scale), int(height * scale)
-        x_offset = (TILE_SIZE - new_width) // 2
-        y_offset = (TILE_SIZE - new_height) // 2
+        scale_x = TILE_SIZE / width
+        scale_y = TILE_SIZE / height
 
-        tile = np.zeros((TILE_SIZE, TILE_SIZE, 3), dtype=np.uint8)
-        tile[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = cv2.resize(
-            face, (new_width, new_height), interpolation=cv2.INTER_CUBIC
-        )
+        tile = cv2.resize(face, (TILE_SIZE, TILE_SIZE), interpolation=cv2.INTER_CUBIC)
 
         draw_detections(
             {
                 "detection_boxes": [
-                    [x1 * scale + x_offset, y1 * scale + y_offset,
-                     x2 * scale + x_offset, y2 * scale + y_offset]
+                    [x1 * scale_x, y1 * scale_y, x2 * scale_x, y2 * scale_y]
                     for x1, y1, x2, y2 in detections["detection_boxes"]
                 ],
                 "detection_scores": detections["detection_scores"],
