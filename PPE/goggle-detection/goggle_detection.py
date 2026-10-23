@@ -1,310 +1,294 @@
 #!/usr/bin/env python3
-import cv2
-import os
-import sys
+import json
+import logging
 import queue
-import threading
-from functools import partial
-from types import SimpleNamespace
-import numpy as np
-from pathlib import Path
-import collections
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "common"))
-from tools import init_rpicam2
-# TODO: Remove dependency on hailo-apps as it is a large, unweildy, and possibly unreliable library
-# HailoRT's python API is much more barebones but is also more well-maintained.
-sys.path.append("/home/pi/hailo-apps")
-try:
-    from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.camera_utils import select_cap_processing_mode
-    from hailo_apps.python.core.common.toolbox import (
-        InputContext,
-        VisualizationSettings,
-        get_labels,
-        load_json_file,
-        preprocess,
-        visualize,
-        FrameRateTracker,
-        InputType,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.standalone_apps.object_detection.object_detection_post_process import inference_result_handler
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-except ImportError:
-    # Running as a plain script: add repo root so `import hailo_apps` works.
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
+import threading
+import time
+from functools import partial
+from pathlib import Path
 
-    from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        get_labels,
-        load_json_file,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from goggle_post_process import inference_result_handler
+import cv2
+import numpy as np
+from hailo_platform import (
+    FormatType,
+    HEF,
+    HailoSchedulingAlgorithm,
+    VDevice,
+)
 
-APP_NAME = Path(__file__).stem
-logger = get_logger(__name__)
+SCRIPT_DIR = Path(__file__).resolve().parent
+# Make `common` importable when running the script from any directory.
+sys.path.insert(0, str(SCRIPT_DIR.parent))
+
+from common.tools import init_rpicam2
+from goggle_argparse import parse_args
+from frame_rate_tracker import FrameRateTracker
+from goggle_post_process import inference_result_handler
+
+DEFAULT_HEF_PATH = SCRIPT_DIR / "best_mask_and_goggles.hef"
+DEFAULT_LABELS_PATH = SCRIPT_DIR / "goggle_labels.txt"
+DEFAULT_CONFIG_PATH = SCRIPT_DIR / "config.json"
+DEFAULT_OUTPUT_DIR = SCRIPT_DIR / "output"
+
+CAMERA_WIDTH = 640
+CAMERA_HEIGHT = 640
+CAMERA_SOURCE_FPS = 30.0
+
+TIMEOUT_MS = 10000
+
+MAX_INPUT_QUEUE_SIZE = 60
+MAX_OUTPUT_QUEUE_SIZE = 60
+
+logger = logging.getLogger("goggle_detection")
+
+def load_json_file(path: Path) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
-def parse_args():
+def get_labels(labels_path) -> list:
+    """Loads class labels, one per line."""
+    path = Path(labels_path) if labels_path else DEFAULT_LABELS_PATH
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read().splitlines()
+
+
+def letterbox_rgb_img(image: np.ndarray, model_w: int, model_h: int) -> np.ndarray:
     """
-    Parse command-line arguments for the detection application.
-
-    Returns:
-        argparse.Namespace: Parsed CLI arguments.
+    Letterboxes an RGB image to the model input size, preserving aspect ratio.
     """
-    parser = get_standalone_parser()
-    parser.description = "Run object detection with optional tracking and performance measurement."
+    img_h, img_w = image.shape[:2]
+    scale = min(model_w / img_w, model_h / img_h)
+    new_img_w, new_img_h = int(img_w * scale), int(img_h * scale)
+    image = cv2.resize(image, (new_img_w, new_img_h), interpolation=cv2.INTER_CUBIC)
 
-    parser.add_argument(
-        "--track",
-        action="store_true",
-        help=(
-            "Enable object tracking for detections. "
-            "When enabled, detected objects will be tracked across frames using a tracking algorithm "
-            "(e.g., ByteTrack). This assigns consistent IDs to objects over time, enabling temporal analysis, "
-            "trajectory visualization, and multi-frame association. Useful for video processing applications."
-        ),
-    )
-
-    parser.add_argument(
-        "--labels",
-        "-l",
-        type=str,
-        default=None,
-        help=(
-            "Path to a text file containing class labels, one per line. "
-            "Used for mapping model output indices to human-readable class names. "
-            "If not specified, default labels for the model will be used (e.g., COCO labels for detection models)."
-        ),
-    )
-
-    parser.add_argument(
-        "--draw-trail",
-        action="store_true",
-        help=(
-            "[Tracking only] Draw motion trails of tracked objects.\n"
-            "Uses the last 30 positions from the tracker history."
-        )
-    )
-
-    args = parser.parse_args()
-    return args
+    padded_image = np.full((model_h, model_w, 3), (114, 114, 114), dtype=np.uint8)
+    x_offset = (model_w - new_img_w) // 2
+    y_offset = (model_h - new_img_h) // 2
+    padded_image[y_offset:y_offset + new_img_h, x_offset:x_offset + new_img_w] = image
+    return padded_image
 
 
-def run_inference_pipeline(net, labels, input_context: InputContext,
-                           visualization_settings: VisualizationSettings,
-          enable_tracking=False, show_fps=False, draw_trail=False) -> None:
+def preprocess(cap,
+               input_queue: queue.Queue,
+               model_input_width: int,
+               model_input_height: int,
+               stop_event: threading.Event) -> None:
     """
-    Initialize queues, HailoAsyncInference instance, and run the inference.
+    Reads camera frames one at a time and pushes (original_frame,
+    preprocessed_frame) tuples into the input queue.
+
+    When a target frame rate below the camera's is requested, frames are dropped
+    to match it.
     """
-    labels = get_labels(labels)
-    config_data = load_json_file("config.json")
+    try:
+        while not stop_event.is_set():
+            ret, frame_bgr = cap.read()
+            if not ret:
+                break
 
-    # Initialize rpicam2 using copy-pasted hailo-apps code
-    # TODO: Uses a lot of copy-pasted code from hailo-apps,
-    # maybe replace with something less dodgy
-    input_context.cap = init_rpicam2(1920, 1080)
-    input_context.input_type = InputType.RPI_CAMERA
-    input_context.source_fps = 30
-    if input_context.cap is not None:
-        input_context.width = int(input_context.cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-        input_context.height = int(input_context.cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            input_queue.put((
+                frame_rgb,
+                letterbox_rgb_img(
+                    frame_rgb, model_input_width, model_input_height
+                ),
+            ))
+    finally:
+        stop_event.set()
 
-    input_context.cap_processing_mode = select_cap_processing_mode(
-        input_type=input_context.input_type.value,
-        frame_rate=input_context.frame_rate,
-        source_fps=input_context.source_fps,
-        video_unpaced=input_context.video_unpaced,
+
+def _copy_inference_result(raw):
+    """Copies buffers, since the bindings reuse them across frames."""
+    if isinstance(raw, (list, tuple)):
+        return [np.array(item) for item in raw]
+    return np.array(raw)
+
+
+def run_inference_pipeline(network: str,
+                           input_queue: queue.Queue,
+                           output_queue: queue.Queue,
+                           stop_event: threading.Event) -> None:
+    """
+    Spins up a loop that performs inference on any preprocessed frames added to
+    the input queue.
+
+    Params:
+        network: Neural network (HEF) to perform inference with.
+        input_queue: Queue of (original_frame, preprocessed_frame) tuples.
+        output_queue: Queue of (original_frame, raw_inference) tuples.
+        stop_event: Event used to stop this pipeline.
+    """
+    params = VDevice.create_params()
+    params.group_id = "SHARED"
+    params.scheduling_algorithm = HailoSchedulingAlgorithm.ROUND_ROBIN
+
+    try:
+        with VDevice(params) as vdevice:
+            infer_model = vdevice.create_infer_model(network)
+            infer_model.input().set_format_type(FormatType.UINT8)
+
+            for name in infer_model.output_names:
+                infer_model.output(name).set_format_type(FormatType.FLOAT32)
+
+            with infer_model.configure() as configured_infer_model:
+                bindings = configured_infer_model.create_bindings()
+                buffer_in = np.empty(infer_model.input().shape, dtype=np.uint8)
+                bindings.input().set_buffer(buffer_in)
+                for name in infer_model.output_names:
+                    out_info = infer_model.output(name)
+                    bindings.output(name).set_buffer(
+                        np.empty(out_info.shape, dtype=np.float32)
+                    )
+
+                while not stop_event.is_set():
+                    try:
+                        frame = input_queue.get(timeout=0.5)  # blocks, times out to check stop_event
+                    except queue.Empty:
+                        continue
+
+                    original_frame, preprocessed_frame = frame
+                    buffer_in[:] = preprocessed_frame
+                    configured_infer_model.run([bindings], timeout=TIMEOUT_MS)
+
+                    if len(infer_model.output_names) == 1:
+                        buffer = bindings.output().get_buffer()
+                        result = _copy_inference_result(buffer)
+                    else:
+                        result = {
+                            name: np.expand_dims(
+                                _copy_inference_result(bindings.output(name).get_buffer()),
+                                axis=0
+                            )
+                            for name in infer_model.output_names
+                        }
+                    output_queue.put((original_frame, result))
+    finally:
+        stop_event.set()
+
+
+def visualize(output_queue: queue.Queue,
+              callback,
+              stop_event: threading.Event,
+              fps_tracker: FrameRateTracker | None = None,
+              video_path: Path | None = None) -> None:
+    """
+    Applies the post-processing/visualization callback to each result and
+    displays it. Frames are shown, and recorded, at their own resolution.
+
+    If video_path is provided, the video writer is sized from the first
+    annotated frame.
+    """
+    video_writer = None
+    cv2.namedWindow("Output", cv2.WINDOW_AUTOSIZE)
+
+    try:
+        while not stop_event.is_set():
+            try:
+                result = output_queue.get(timeout=0.5)  # blocks, times out to check stop_event
+            except queue.Empty:
+                continue
+
+            original_frame, inference_result = result
+            frame_with_detections = callback(original_frame, inference_result)
+
+            if fps_tracker is not None:
+                fps_tracker.increment()
+
+            # Frames are RGB internally; OpenCV displays BGR.
+            output_bgr_frame = cv2.cvtColor(
+                frame_with_detections, cv2.COLOR_RGB2BGR
+            )
+
+            if video_path is not None and video_writer is None:
+                height, width = output_bgr_frame.shape[:2]
+                video_path.parent.mkdir(parents=True, exist_ok=True)
+                video_writer = cv2.VideoWriter(
+                    str(video_path),
+                    cv2.VideoWriter.fourcc(*"XVID"),
+                    CAMERA_SOURCE_FPS,
+                    (width, height),
+                )
+
+            cv2.imshow("Output", output_bgr_frame)
+            if (cv2.waitKey(1) & 0xFF) == ord("q"):
+                stop_event.set()
+                break
+
+            if video_writer is not None:
+                video_writer.write(output_bgr_frame)
+    finally:
+        stop_event.set()
+        if video_writer is not None:
+            video_writer.release()
+        cv2.destroyAllWindows()
+
+
+def main() -> None:
+    """Runs the camera, preprocessing, inference and visualization pipeline."""
+    args = parse_args()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
     )
+
+    network = args.hef_path or str(DEFAULT_HEF_PATH)
+    labels = get_labels(args.labels or str(DEFAULT_LABELS_PATH))
+    config_data = load_json_file(DEFAULT_CONFIG_PATH)
+
+    video_path = None
+    if args.save_output:
+        video_path = Path(args.output_dir or DEFAULT_OUTPUT_DIR) / "output.avi"
+
+    cap = init_rpicam2(CAMERA_WIDTH, CAMERA_HEIGHT)
+    if cap is None:
+        logger.error("Failed to open the Raspberry Pi camera.")
+        return
+
+    hef = HEF(network)
+    model_input_height, model_input_width, _ = hef.get_input_vstream_infos()[0].shape
 
     stop_event = threading.Event()
-    tracker = None
-    fps_tracker = None
-    if show_fps:
-        fps_tracker = FrameRateTracker()
 
-    if enable_tracking:
-        # load tracker config from config_data
-        tracker_config = config_data.get("visualization_params", {}).get("tracker", {})
-        tracker = BYTETracker(SimpleNamespace(**tracker_config))
+    fps_tracker = FrameRateTracker() if args.show_fps else None
 
     input_queue = queue.Queue(MAX_INPUT_QUEUE_SIZE)
     output_queue = queue.Queue(MAX_OUTPUT_QUEUE_SIZE)
 
-    post_process_callback_fn = partial(
-        inference_result_handler, labels=labels,
-        config_data=config_data, tracker=tracker, draw_trail=draw_trail
+    visualizer_callback = partial(
+        inference_result_handler,
+        labels=labels,
+        config_data=config_data,
     )
-
-    hailo_inference = HailoInfer(net, input_context.batch_size)
-    input_context.height, input_context.width, _ = hailo_inference.get_input_shape()
 
     preprocess_thread = threading.Thread(
-        target=preprocess, args=(input_context, input_queue, input_context.width, input_context.height, None, stop_event)
+        target=preprocess,
+        args=(cap, input_queue, model_input_width, model_input_height, stop_event),
     )
-    postprocess_thread = threading.Thread(
-        target=visualize, 
-        args=(input_context, visualization_settings, output_queue, post_process_callback_fn, fps_tracker, stop_event)
-    )
-    infer_thread = threading.Thread(
-        target=infer, args=(hailo_inference, input_queue, output_queue, stop_event)
+    visualize_thread = threading.Thread(
+        target=visualize,
+        args=(output_queue, visualizer_callback, stop_event, fps_tracker, video_path),
     )
 
     preprocess_thread.start()
-    postprocess_thread.start()
-    infer_thread.start()
+    visualize_thread.start()
 
-    if show_fps:
+    if fps_tracker is not None:
         fps_tracker.start()
 
-    preprocess_thread.join()
-    infer_thread.join()
-    postprocess_thread.join()
+    # Inference runs on the main thread; capture and visualization run alongside it.
+    run_inference_pipeline(network, input_queue, output_queue, stop_event)
 
-    if show_fps:
+    preprocess_thread.join()
+    visualize_thread.join()
+
+    if fps_tracker is not None:
         logger.info(fps_tracker.frame_rate_summary())
 
-    logger.success("Inference was successful!")
-    if visualization_settings.save_stream_output or input_context.input_src.lower() not in ("usb", "rpi"):
-        logger.info(f"Results have been saved in {visualization_settings.output_dir}")
-
-
-def infer(hailo_inference, input_queue, output_queue, stop_event):
-    """
-    Main inference loop that pulls data from the input queue, runs asynchronous
-    inference, and pushes results to the output queue.
-
-    Each item in the input queue is expected to be a tuple:
-        (input_batch, preprocessed_batch)
-        - input_batch: Original frames (used for visualization or tracking)
-        - preprocessed_batch: Model-ready frames (e.g., resized, normalized)
-
-    Args:
-        hailo_inference (HailoInfer): The inference engine to run model predictions.
-        input_queue (queue.Queue): Provides (input_batch, preprocessed_batch) tuples.
-        output_queue (queue.Queue): Collects (input_frame, result) tuples for visualization.
-
-    Returns:
-        None
-    """
-    # Limit number of concurrent async inferences
-    pending_jobs = collections.deque()
-
-    while True:
-        next_batch = input_queue.get()
-        if not next_batch:
-            break  # Stop signal received
-
-        if stop_event.is_set():
-            continue  # Skip processing if stop signal is set
-
-        input_batch, preprocessed_batch = next_batch
-
-        # Prepare the callback for handling the inference result
-        inference_callback_fn = partial(
-            inference_callback,
-            input_batch=input_batch,
-            output_queue=output_queue
-        )
-
-
-        while len(pending_jobs) >= MAX_ASYNC_INFER_JOBS:
-            pending_jobs.popleft().wait(10000)
-
-        # Run async inference
-        job = hailo_inference.run(preprocessed_batch, inference_callback_fn)
-        pending_jobs.append(job)
-
-    # Release resources and context
-    hailo_inference.close()
-    output_queue.put(None)
-
-
-def inference_callback(
-    completion_info,
-    bindings_list: list,
-    input_batch: list,
-    output_queue: queue.Queue
-) -> None:
-    """
-    infernce callback to handle inference results and push them to a queue.
-
-    Args:
-        completion_info: Hailo inference completion info.
-        bindings_list (list): Output bindings for each inference.
-        input_batch (list): Original input frames.
-        output_queue (queue.Queue): Queue to push output results to.
-    """
-    if completion_info.exception:
-        logger.error(f'Inference error: {completion_info.exception}')
-    else:
-        for i, bindings in enumerate(bindings_list):
-            if len(bindings._output_names) == 1:
-                result = bindings.output().get_buffer()
-            else:
-                result = {
-                    name: np.expand_dims(
-                        bindings.output(name).get_buffer(), axis=0
-                    )
-                    for name in bindings._output_names
-                }
-            output_queue.put((input_batch[i], result))
-
-def main() -> None:
-    """
-    Main function to run the script.
-    """
-    args = parse_args()
-    init_logging(level=level_from_args(args))
-    handle_and_resolve_args(args, APP_NAME)
-    input_context = InputContext(
-        input_src=args.input,
-        batch_size=args.batch_size,
-        resolution=args.camera_resolution,
-        frame_rate=args.frame_rate,
-    )
-    visualization_settings = VisualizationSettings(
-        output_dir=args.output_dir,
-        save_stream_output=args.save_output,
-        output_resolution=args.output_resolution,
-    )
-    run_inference_pipeline(
-        args.hef_path,
-        args.labels,
-        input_context,
-        visualization_settings,
-        args.track,
-        args.show_fps,
-        args.draw_trail
-    )
+    logger.info("Inference was successful!")
+    if video_path is not None:
+        logger.info(f"Results have been saved to {video_path}")
 
 
 if __name__ == "__main__":
