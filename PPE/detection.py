@@ -9,8 +9,6 @@ import cv2
 import numpy as np
 from hailo_platform import HEF
 
-from common.utils import letterbox_img
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
@@ -75,7 +73,7 @@ def run_goggle_pipeline(input_queue: queue.Queue,
         # conversion, so the crops are passed through the same way.
         faces = [face for face in output["faces"] if face.size > 0]
         for face in faces:
-            goggle_input_queue.put((face, letterbox_img(face, size=size)))
+            goggle_input_queue.put((face, cv2.resize(face, (size, size), interpolation=cv2.INTER_CUBIC)))
 
         face_detections = []
         while len(face_detections) < len(faces) and not stop_event.is_set():

@@ -4,10 +4,8 @@ import logging
 import queue
 import sys
 import threading
-from functools import partial
 from pathlib import Path
 
-import cv2
 import numpy as np
 from hailo_platform import (
     FormatType,
@@ -19,12 +17,6 @@ from hailo_platform import (
 SCRIPT_DIR = Path(__file__).resolve().parent
 # Make `common` importable when running the script from any directory.
 sys.path.insert(0, str(SCRIPT_DIR.parent))
-
-from common.utils import letterbox_img
-from common.tools import init_rpicam2
-from goggle_argparse import parse_args
-from frame_rate_tracker import FrameRateTracker
-from goggle_post_process import inference_result_handler
 
 DEFAULT_HEF_PATH = SCRIPT_DIR / "best_mask_and_goggles.hef"
 DEFAULT_LABELS_PATH = SCRIPT_DIR / "goggle_labels.txt"
@@ -118,121 +110,3 @@ def run_inference_pipeline(network: str,
                         for name in infer_model.output_names
                     }
                 output_queue.put((original_frame, result))
-
-
-def visualize(output_queue: queue.Queue,
-              callback,
-              stop_event: threading.Event,
-              fps_tracker: FrameRateTracker | None = None,
-              video_path: Path | None = None) -> None:
-    """
-    Applies the post-processing/visualization callback to each result and
-    displays it. Frames are shown, and recorded, at their own resolution.
-
-    If video_path is provided, the video writer is sized from the first
-    annotated frame.
-    """
-    video_writer = None
-    cv2.namedWindow("Output", cv2.WINDOW_AUTOSIZE)
-
-    try:
-        while not stop_event.is_set():
-            try:
-                result = output_queue.get(timeout=0.5)  # blocks, times out to check stop_event
-            except queue.Empty:
-                continue
-
-            original_frame, inference_result = result
-            frame_with_detections = callback(original_frame, inference_result)
-
-            if fps_tracker is not None:
-                fps_tracker.increment()
-
-            if video_path is not None and video_writer is None:
-                height, width = frame_with_detections.shape[:2]
-                video_path.parent.mkdir(parents=True, exist_ok=True)
-                video_writer = cv2.VideoWriter(
-                    str(video_path),
-                    cv2.VideoWriter.fourcc(*"XVID"),
-                    CAMERA_SOURCE_FPS,
-                    (width, height),
-                )
-
-            cv2.imshow("Output", frame_with_detections)
-
-            if video_writer is not None:
-                video_writer.write(frame_with_detections)
-    finally:
-        if video_writer is not None:
-            video_writer.release()
-        cv2.destroyAllWindows()
-
-
-def main() -> None:
-    """Runs the camera, preprocessing, inference and visualization pipeline."""
-    args = parse_args()
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
-
-    network = args.hef_path or str(DEFAULT_HEF_PATH)
-    labels = get_labels(args.labels or str(DEFAULT_LABELS_PATH))
-    config_data = load_json_file(DEFAULT_CONFIG_PATH)
-
-    video_path = None
-    if args.save_output:
-        video_path = Path(args.output_dir or DEFAULT_OUTPUT_DIR) / "output.avi"
-
-    cap = init_rpicam2(CAMERA_WIDTH, CAMERA_HEIGHT)
-    assert cap is not None, "Failed to open the Raspberry Pi camera."
-
-    hef = HEF(network)
-    model_input_height, model_input_width, _ = hef.get_input_vstream_infos()[0].shape
-    assert model_input_width == model_input_height, "We only support models with square input widths/heights"
-
-    stop_event = threading.Event()
-
-    fps_tracker = FrameRateTracker()
-
-    input_queue = queue.Queue(MAX_INPUT_QUEUE_SIZE)
-    output_queue = queue.Queue(MAX_OUTPUT_QUEUE_SIZE)
-
-    visualizer_callback = partial(
-        inference_result_handler,
-        labels=labels,
-        config_data=config_data,
-    )
-
-    inference_thread = threading.Thread(
-        target=run_inference_pipeline,
-        args=(network, input_queue, output_queue, stop_event),
-    )
-    visualize_thread = threading.Thread(
-        target=visualize,
-        args=(output_queue, visualizer_callback, stop_event, fps_tracker, video_path),
-    )
-
-    inference_thread.start()
-    visualize_thread.start()
-    fps_tracker.start()
-
-    try:
-        while True:
-            ret, frame = cap.read()
-            if ret:
-                input_queue.put((frame, letterbox_img(frame, size=model_input_width, fill=114)))
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-    finally:
-        stop_event.set()
-        inference_thread.join()
-        visualize_thread.join()
-
-        logger.info(fps_tracker.frame_rate_summary())
-        if video_path is not None:
-            logger.info(f"Results have been saved to {video_path}")
-
-
-if __name__ == "__main__":
-    main()
