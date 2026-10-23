@@ -27,7 +27,7 @@ _led = LEDDisplay(
     pixel_order=LED_PIXEL_ORDER,
     simulate=LED_SIMULATE,
 )
-_led.begin()
+#_led.begin()
 
 def inference_result_handler(original_frame, infer_results, labels, config_data, tracker=None, draw_trail=False):
     detections = extract_detections(original_frame, infer_results, config_data)
