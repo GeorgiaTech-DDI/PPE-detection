@@ -1,2 +1,2 @@
-Glasses
-Person
+eyeglasses
+safety_glasses

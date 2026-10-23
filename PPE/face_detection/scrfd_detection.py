@@ -1,13 +1,10 @@
-import cv2
-import numpy as np
 import queue
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 import threading
 import supervision as sv
 
 from hailo_platform import VDevice, FormatType, ConfigureParams, HailoSchedulingAlgorithm
-from matplotlib.image import imread
+
+from common.utils import letterbox_img
 from scrfd_postproc import *
 
 TIMEOUT_MS = 1000
@@ -30,34 +27,6 @@ FRAME_RATE = 30
 MINIMUM_CONSECUTIVE_FRAMES = 1
 
 
-# Takes whatever size input, scales to a square with letterboxes.
-# Returns Numpy ndarray
-def preprocess(image: np.ndarray, size: int = 640):
-    h, w = image.shape[:2]
-
-    scale = min(size / w, size / h)
-    new_w = round(w * scale)
-    new_h = round(h * scale)
-
-    image = cv2.resize(image, (new_w, new_h))
-
-    pad_x = size - new_w
-    pad_y = size - new_h
-
-    left = pad_x // 2
-    right = pad_x - left
-    top = pad_y // 2
-    bottom = pad_y - top
-
-    image = cv2.copyMakeBorder(
-        image,
-        top, bottom, left, right,
-        cv2.BORDER_CONSTANT,
-        value=(0, 0, 0)
-    )
-
-    return np.ascontiguousarray(image)
-
 def run_preprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue, stop_event: threading.Event):
     """
     Spins a thread which performs continuous preprocessing as frames come in.
@@ -74,8 +43,8 @@ def run_preprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue,
             continue
 
         output_queue.put({
-            "lores_frame": preprocess(input),
-            "hires_frame": preprocess(input, size=1920),
+            "lores_frame": letterbox_img(input, resize_interpolation=cv2.INTER_LINEAR),
+            "hires_frame": letterbox_img(input, size=1920, resize_interpolation=cv2.INTER_LINEAR),
         })
 
 

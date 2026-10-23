@@ -60,15 +60,5 @@ def parse_args():
         ),
     )
 
-    parser.add_argument(
-        "--show-fps",
-        action="store_true",
-        help=(
-            "Enable FPS (frames per second) counter display. "
-            "When enabled, the application will display real-time performance metrics "
-            "showing the current processing rate. Useful for performance monitoring and optimization."
-        ),
-    )
-
     args = parser.parse_args()
     return args
