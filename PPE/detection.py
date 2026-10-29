@@ -21,6 +21,7 @@ for _subpackage in ("face_detection", "goggle_detection"):
         sys.path.append(_subpackage_path)
 
 from common.tools import init_rpicam2
+from common.utils import letterbox_img
 from face_detection import scrfd_detection as scrfd
 from goggle_detection import goggle_detection as goggles
 from goggle_detection.goggle_post_process import draw_detections, extract_detections
@@ -29,7 +30,7 @@ CAMERA_WIDTH = 1920
 CAMERA_HEIGHT = 1080
 
 SCRFD_HEF_PATH = SCRIPT_DIR / "face_detection" / "scrfd_500m.hef"
-GOGGLE_HEF_PATH = SCRIPT_DIR / "goggle_detection" / "best_mask_and_goggles.hef"
+GOGGLE_HEF_PATH = SCRIPT_DIR / "goggle_detection" / "matrix_f26_best_10232026.hef"
 
 WINDOW_NAME = "Face Detections"
 TILE_SIZE = 256
@@ -73,7 +74,7 @@ def run_goggle_pipeline(input_queue: queue.Queue,
         # conversion, so the crops are passed through the same way.
         faces = [face for face in output["faces"] if face.size > 0]
         for face in faces:
-            goggle_input_queue.put((face, cv2.resize(face, (size, size), interpolation=cv2.INTER_CUBIC)))
+            goggle_input_queue.put((face, letterbox_img(face)))
 
         face_detections = []
         while len(face_detections) < len(faces) and not stop_event.is_set():

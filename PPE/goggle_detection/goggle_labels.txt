@@ -1,5 +1,2 @@
-face
-goggles
-mask
-no_goggles
-no_mask
+eyeglasses
+safety_glasses
