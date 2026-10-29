@@ -18,19 +18,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # Make `common` importable when running the script from any directory.
 sys.path.insert(0, str(SCRIPT_DIR.parent))
 
-DEFAULT_HEF_PATH = SCRIPT_DIR / "matrix_f26_best_10232026.hef"
 DEFAULT_LABELS_PATH = SCRIPT_DIR / "goggle_labels.txt"
-DEFAULT_CONFIG_PATH = SCRIPT_DIR / "config.json"
-DEFAULT_OUTPUT_DIR = SCRIPT_DIR / "output"
-
-CAMERA_WIDTH = 640
-CAMERA_HEIGHT = 640
-CAMERA_SOURCE_FPS = 30.0
-
 TIMEOUT_MS = 10000
-
-MAX_INPUT_QUEUE_SIZE = 60
-MAX_OUTPUT_QUEUE_SIZE = 60
 
 logger = logging.getLogger("goggle_detection")
 
