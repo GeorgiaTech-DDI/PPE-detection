@@ -1,18 +1,6 @@
 import cv2
 import numpy as np
-import sys
-sys.path.append("/home/pi/hailo-apps")
-try:
-    from hailo_apps.python.core.common.toolbox import id_to_color
-except ImportError:
-    from pathlib import Path
-    import sys
 
-    core_dir = Path(__file__).resolve().parents[2] / "core"
-    sys.path.insert(0, str(core_dir))
-    from common.tools import id_to_color
-
-import os
 from collections import deque
 
 # Dictionary to store a limited history of tracklet coordinates.
@@ -39,7 +27,7 @@ _led = LEDDisplay(
     pixel_order=LED_PIXEL_ORDER,
     simulate=LED_SIMULATE,
 )
-_led.begin()
+#_led.begin()
 
 def inference_result_handler(original_frame, infer_results, labels, config_data, tracker=None, draw_trail=False):
     detections = extract_detections(original_frame, infer_results, config_data)
@@ -242,9 +230,9 @@ def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None,
             x1, y1, x2, y2 = track.tlbr  # Bounding box (top-left, bottom-right)
             xmin, ymin, xmax, ymax = map(int, [x1, y1, x2, y2])
             best_idx = find_best_matching_detection_index(track.tlbr, boxes)
-            color = tuple(id_to_color(classes[best_idx]).tolist())  # Color based on class
+            color = (255, 0, 0) if best_idx == 0 else (0, 255, 0)
             if best_idx is None:
-                draw_detection(img_out, [xmin, ymin, xmax, ymax], f"ID {track_id}",
+                draw_detection(img_out, [xmin, ymin, xmax, ymax], [f"ID {track_id}"],
                                track.score * 100.0, color, track=True)
             else:
                 draw_detection(img_out, [xmin, ymin, xmax, ymax], [labels[classes[best_idx]], f"ID {track_id}"],
@@ -278,7 +266,7 @@ def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None,
     else:
         # No tracking — draw raw model detections
         for idx in range(num_detections):
-            color = tuple(id_to_color(classes[idx]).tolist())  # Color based on class
+            color = (255, 0, 0) if idx == 0 else (0, 255, 0)
             draw_detection(img_out, boxes[idx], [labels[classes[idx]]], scores[idx] * 100.0, color)
 
     return img_out
