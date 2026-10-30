@@ -4,7 +4,7 @@ import queue
 import sys
 import threading
 from pathlib import Path
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 
 import cv2
 import numpy as np
@@ -38,6 +38,20 @@ TILE_SIZE = 256
 QUEUE_TIMEOUT_S = 0.5
 THREAD_JOIN_TIMEOUT_S = 2
 
+@dataclass
+class GoggleState:
+    """
+    Represents the state of a subject for which we are detecting goggles.
+    track_id: ByteTrack ID for the subject
+    goggle_detection_amount: Amount of times goggles were detected
+    person_detection_amount: Amount of times the subject was detected
+    frames_since_last_face: Amount of frames input since last time this subject was seen
+    """
+    track_id: int
+    goggle_detection_amount: int
+    person_detection_amount: int
+    frames_since_last_face: int
+    
 
 def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
                         goggle_input_queue: queue.Queue,

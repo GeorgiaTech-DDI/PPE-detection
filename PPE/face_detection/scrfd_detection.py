@@ -167,7 +167,8 @@ def run_inference_pipeline(
                     frame = input_queue.get(timeout=0.5)   # blocks, times out to check stop_event
                 except queue.Empty:
                     continue
-                
+
+                # Inference
                 buffer_in[:] = frame.lores_frame
                 configured_infer_model.run([bindings], timeout=TIMEOUT_MS)
 
