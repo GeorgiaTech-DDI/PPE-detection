@@ -9,7 +9,7 @@ class FrameRateTracker:
 
     def start(self) -> None:
         self._count = 0
-        self._start_time = time.time()
+        self._start_time = time.perf_counter()
 
     def increment(self, n: int = 1) -> None:
         self._count += n
@@ -22,7 +22,7 @@ class FrameRateTracker:
     def elapsed(self) -> float:
         if self._start_time is None:
             return 0.0
-        return time.time() - self._start_time
+        return time.perf_counter() - self._start_time
 
     @property
     def fps(self) -> float:

@@ -162,28 +162,30 @@ def extract_detections(image: np.ndarray, detections: list, config_data) -> dict
     size = max(img_height, img_width)
     padding_length = int(abs(img_height - img_width) / 2)
 
-    all_detections = []
-
+    candidates = []
     for class_id, detection in enumerate(detections):
-        for det in detection:
-            bbox, score = det[:4], det[4]
-            if score >= score_threshold:
-                denorm_bbox = denormalize_and_rm_pad(bbox, size, padding_length, img_height, img_width)
-                all_detections.append((score, class_id, denorm_bbox))
+        detection_array = np.asarray(detection)
+        if detection_array.size == 0:
+            continue
+        detection_array = detection_array.reshape(-1, detection_array.shape[-1])
+        for det in detection_array[detection_array[:, 4] >= score_threshold]:
+            candidates.append((
+                float(det[4]),
+                class_id,
+                denormalize_and_rm_pad(det[:4], size, padding_length, img_height, img_width),
+            ))
 
-    # Sort all detections by score descending
-    all_detections.sort(reverse=True, key=lambda x: x[0])
-
-    # Take top max_boxes
-    top_detections = all_detections[:max_boxes]
-
-    scores, class_ids, boxes = zip(*top_detections) if top_detections else ([], [], [])
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    top_detections = candidates[:max_boxes]
+    scores = [item[0] for item in top_detections]
+    class_ids = [item[1] for item in top_detections]
+    boxes = [item[2] for item in top_detections]
 
     return {
         'detection_boxes': list(boxes),
         'detection_classes': list(class_ids),
         'detection_scores': list(scores),
-        'num_detections': len(top_detections)
+        'num_detections': len(top_detections),
     }
 
 
@@ -208,21 +210,18 @@ def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None,
     num_detections = detections["num_detections"]  # Total number of valid detections
     classes = detections["detection_classes"]  # List of class indices per detection
 
-    if tracker:
-        dets_for_tracker = []
-
-        # Convert detection format to [xmin,ymin,xmaxm ymax,score] for tracker
-        for idx in range(num_detections):
-            box = boxes[idx]  # [x, y, w, h]
-            score = scores[idx]
-            dets_for_tracker.append([*box, score])
-
-        # Skip tracking if no detections passed
-        if not dets_for_tracker:
+    if tracker is not None:
+        if not num_detections:
             return img_out
 
+        # Keep the tracker input contiguous and avoid repeatedly growing a
+        # Python list for every detection.
+        dets_for_tracker = np.empty((num_detections, 5), dtype=np.float32)
+        dets_for_tracker[:, :4] = np.asarray(boxes[:num_detections], dtype=np.float32)
+        dets_for_tracker[:, 4] = np.asarray(scores[:num_detections], dtype=np.float32)
+
         # Run BYTETracker and get active tracks
-        online_targets = tracker.update(np.array(dets_for_tracker))
+        online_targets = tracker.update(dets_for_tracker)
 
         # Draw tracked bounding boxes with ID labels
         for track in online_targets:
@@ -237,8 +236,8 @@ def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None,
             else:
                 draw_detection(img_out, [xmin, ymin, xmax, ymax], [labels[classes[best_idx]], f"ID {track_id}"],
                                track.score * 100.0, color, track=True)
-                               
-            if not classes[best_idx] in TRACKLET_CLASSES:
+
+            if best_idx is None or classes[best_idx] not in TRACKLET_CLASSES:
                 continue
 
             # Get the centroid of the current bounding box

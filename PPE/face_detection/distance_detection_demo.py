@@ -25,6 +25,7 @@ args = parser.parse_args()
 
 SAVE_DATA = args.save
 dist = args.dist
+THREAD_JOIN_TIMEOUT_S = 2
 
 if SAVE_DATA and not dist:
     dist = input("What distance is this data for? ")
@@ -33,10 +34,10 @@ camera = init_rpicam2(1920, 1080)
 
 stop_event = threading.Event()
 
-input_queue = queue.Queue()
-preprocessed_frames = queue.Queue()
-inferences = queue.Queue()
-outputs = queue.Queue()
+input_queue = queue.Queue(maxsize=1)
+preprocessed_frames = queue.Queue(maxsize=PIPELINE_QUEUE_SIZE)
+inferences = queue.Queue(maxsize=PIPELINE_QUEUE_SIZE)
+outputs = queue.Queue(maxsize=1)
 
 
 hef_path = str(Path(__file__).resolve().parent / "scrfd_10g.hef")
@@ -52,7 +53,9 @@ postprocess_thread.start()
 rows = []
 
 while True:
-    input_queue.put(camera.read()[1])
+    ok, frame = camera.read()
+    if ok:
+        put_latest(input_queue, frame)
     try:
         output = outputs.get_nowait()
         frames = output.get('faces')
@@ -76,6 +79,10 @@ while True:
         break
 
 stop_event.set()
+for thread in (preprocess_thread, infer_thread, postprocess_thread):
+    thread.join(timeout=THREAD_JOIN_TIMEOUT_S)
+camera.release()
+cv2.destroyAllWindows()
 
 if SAVE_DATA:
     if rows:

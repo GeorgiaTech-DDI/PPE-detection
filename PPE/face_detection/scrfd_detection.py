@@ -1,5 +1,6 @@
 import queue
 import threading
+from typing import Any
 import supervision as sv
 
 from hailo_platform import VDevice, FormatType, ConfigureParams, HailoSchedulingAlgorithm
@@ -25,6 +26,22 @@ LOST_TRACK_BUFFER = 30
 MINIMUM_MATCHING_THRESHOLD = 0.8
 FRAME_RATE = 30
 MINIMUM_CONSECUTIVE_FRAMES = 1
+PIPELINE_QUEUE_SIZE = 2
+
+
+def put_latest(output_queue: queue.Queue, item: Any) -> None:
+    """Keep a live pipeline responsive by discarding stale queued work."""
+    try:
+        output_queue.put_nowait(item)
+        return
+    except queue.Full:
+        pass
+
+    try:
+        output_queue.get_nowait()
+    except queue.Empty:
+        pass
+    output_queue.put_nowait(item)
 
 
 def run_preprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue, stop_event: threading.Event):
@@ -251,6 +268,7 @@ def run_tracking_pipeline(input_queue: queue.Queue, output_queue: queue.Queue, s
         frame_rate=FRAME_RATE,
         minimum_consecutive_frames=MINIMUM_CONSECUTIVE_FRAMES,
     )
+    no_faces_count = 0
 
     while not stop_event.is_set():
         try:

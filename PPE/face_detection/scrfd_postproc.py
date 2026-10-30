@@ -15,7 +15,7 @@ class SCRFDPostProc:
     LABEL_OFFSET = 1
 
     def __init__(self, image_dims=(300, 300), nms_iou_thresh=0.6, score_threshold=0.3, anchors=None):
-        if not anchors:
+        if anchors is None:
             anchors = get_default_anchors()
         self._image_dims = image_dims
         self._nms_iou_thresh = nms_iou_thresh
@@ -27,20 +27,19 @@ class SCRFDPostProc:
         box_predictors_list = []
         class_predictors_list = []
         landmarks_predictors_list = []
-        sorted_output_branches = output_branches
         num_branches = self._num_branches
-        assert len(sorted_output_branches) % num_branches == 0, "All branches must have the same number of output nodes"
-        num_output_nodes_per_branch = len(sorted_output_branches) // num_branches
-        for branch_index in range(0, len(sorted_output_branches), num_output_nodes_per_branch):
-            box_predictors_list.append(np.reshape(sorted_output_branches[branch_index], (-1, 4)))
+        assert len(output_branches) % num_branches == 0, "All branches must have the same number of output nodes"
+        num_output_nodes_per_branch = len(output_branches) // num_branches
+        for branch_index in range(0, len(output_branches), num_output_nodes_per_branch):
+            box_predictors_list.append(np.reshape(output_branches[branch_index], (-1, 4)))
             class_predictors_list.append(
-                np.reshape(sorted_output_branches[branch_index + 1], (-1, self.NUM_CLASSES))
+                np.reshape(output_branches[branch_index + 1], (-1, self.NUM_CLASSES))
             )
 
             if num_output_nodes_per_branch > 2:
                 # Assume output is landmarks
                 landmarks_predictors_list.append(
-                    np.reshape(sorted_output_branches[branch_index + 2], (-1, 10))
+                    np.reshape(output_branches[branch_index + 2], (-1, 10))
                 )
         box_predictors = np.concatenate(box_predictors_list, axis=0)
         class_predictors = np.concatenate(class_predictors_list, axis=0)

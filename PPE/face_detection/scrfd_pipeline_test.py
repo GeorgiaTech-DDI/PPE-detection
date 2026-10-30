@@ -20,11 +20,10 @@ camera = init_rpicam2(1920, 1080)
 
 stop_event = threading.Event()
 
-input_queue = queue.Queue()
-preprocessed_frames = queue.Queue()
-inferences = queue.Queue()
-outputs = queue.Queue()
-tracked_outputs = queue.Queue()
+input_queue = queue.Queue(maxsize=1)
+preprocessed_frames = queue.Queue(maxsize=PIPELINE_QUEUE_SIZE)
+inferences = queue.Queue(maxsize=PIPELINE_QUEUE_SIZE)
+outputs = queue.Queue(maxsize=1)
 
 
 from pathlib import Path
@@ -47,7 +46,7 @@ try:
     while True:
         ok, frame = camera.read()
         if ok:
-            input_queue.put(frame)
+            put_latest(input_queue, frame)
 
         # Drain the queue so we always display the most recent result
         latest = None
