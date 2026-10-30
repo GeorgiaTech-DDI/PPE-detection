@@ -4,6 +4,7 @@ import queue
 import sys
 import threading
 from pathlib import Path
+from dataclasses import asdict
 
 import cv2
 import numpy as np
@@ -66,13 +67,13 @@ def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
     """
     while not stop_event.is_set():
         try:
-            output = input_queue.get(timeout=QUEUE_TIMEOUT_S)
+            input = input_queue.get(timeout=QUEUE_TIMEOUT_S)
         except queue.Empty:
             continue
 
         # goggle_detection feeds camera frames to the model without a colour
         # conversion, so the crops are passed through the same way.
-        faces = [face for face in output.faces if face.size > 0]
+        faces = [face for face in input.faces if face.size > 0]
         for face in faces:
             goggle_input_queue.put((face, letterbox_img(face)))
 
@@ -86,6 +87,7 @@ def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
                 (face, extract_detections(face, raw_inference, config_data))
             )
 
+        output = asdict(input)
         output["face_detections"] = face_detections
         output_queue.put(output)
 
