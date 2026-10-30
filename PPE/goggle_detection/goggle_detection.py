@@ -9,7 +9,6 @@ from pathlib import Path
 import numpy as np
 from hailo_platform import (
     FormatType,
-    HEF,
     HailoSchedulingAlgorithm,
     VDevice,
 )
@@ -22,6 +21,22 @@ DEFAULT_LABELS_PATH = SCRIPT_DIR / "goggle_labels.txt"
 TIMEOUT_MS = 10000
 
 logger = logging.getLogger("goggle_detection")
+
+
+def put_latest(output_queue: queue.Queue, item) -> None:
+    """Replace stale live work without blocking the capture thread."""
+    try:
+        output_queue.put_nowait(item)
+        return
+    except queue.Full:
+        pass
+
+    try:
+        output_queue.get_nowait()
+    except queue.Empty:
+        pass
+    output_queue.put_nowait(item)
+
 
 def load_json_file(path: Path) -> dict:
     with open(path, "r", encoding="utf-8") as f:
@@ -38,8 +53,8 @@ def get_labels(labels_path) -> list:
 def _copy_inference_result(raw):
     """Copies buffers, since the bindings reuse them across frames."""
     if isinstance(raw, (list, tuple)):
-        return [np.array(item) for item in raw]
-    return np.array(raw)
+        return [np.asarray(item).copy() for item in raw]
+    return np.asarray(raw).copy()
 
 
 def run_inference_pipeline(network: str,

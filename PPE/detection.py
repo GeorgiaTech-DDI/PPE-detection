@@ -74,7 +74,9 @@ def run_goggle_pipeline(input_queue: queue.Queue,
         # conversion, so the crops are passed through the same way.
         faces = [face for face in output["faces"] if face.size > 0]
         for face in faces:
-            goggle_input_queue.put((face, letterbox_img(face)))
+            goggle_input_queue.put(
+                (face, letterbox_img(face, size=size, resize_interpolation=cv2.INTER_LINEAR))
+            )
 
         face_detections = []
         while len(face_detections) < len(faces) and not stop_event.is_set():
@@ -87,7 +89,7 @@ def run_goggle_pipeline(input_queue: queue.Queue,
             )
 
         output["face_detections"] = face_detections
-        output_queue.put(output)
+        goggles.put_latest(output_queue, output)
 
 
 def render_face_grid(face_detections: list, labels: list) -> np.ndarray:
@@ -152,13 +154,15 @@ def main() -> None:
 
     stop_event = threading.Event()
 
-    input_queue = queue.Queue()
-    preprocessed_frames = queue.Queue()
-    inferences = queue.Queue()
-    face_outputs = queue.Queue()
-    goggle_inputs = queue.Queue()
-    goggle_outputs = queue.Queue()
-    outputs = queue.Queue()
+    # Small bounded queues prevent the camera from creating an ever-growing
+    # backlog when either accelerator is temporarily slower than capture.
+    input_queue = queue.Queue(maxsize=1)
+    preprocessed_frames = queue.Queue(maxsize=scrfd.PIPELINE_QUEUE_SIZE)
+    inferences = queue.Queue(maxsize=scrfd.PIPELINE_QUEUE_SIZE)
+    face_outputs = queue.Queue(maxsize=scrfd.PIPELINE_QUEUE_SIZE)
+    goggle_inputs = queue.Queue(maxsize=scrfd.PIPELINE_QUEUE_SIZE)
+    goggle_outputs = queue.Queue(maxsize=scrfd.PIPELINE_QUEUE_SIZE)
+    outputs = queue.Queue(maxsize=1)
 
     threads = [
         threading.Thread(
@@ -193,7 +197,7 @@ def main() -> None:
         while True:
             ok, frame = camera.read()
             if ok:
-                input_queue.put(frame)
+                scrfd.put_latest(input_queue, frame)
 
             # Drain the queue so we always display the most recent result.
             latest = None

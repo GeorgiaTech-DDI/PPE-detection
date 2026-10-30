@@ -1,6 +1,12 @@
 import numpy as np
 import cv2
 
+# Calibrated from face_sizes_2m.csv. A 1.5 standard-deviation margin avoids
+# rejecting valid detections because of small changes in pose or alignment.
+MAX_DISTANCE_FACE_WIDTH = 0.033121 - (1.5 * 0.002108)
+MAX_DISTANCE_FACE_HEIGHT = 0.037857 - (1.5 * 0.002952)
+
+
 def get_default_anchors():
     return {
         "steps": [8, 16, 32],
@@ -15,7 +21,7 @@ class SCRFDPostProc:
     LABEL_OFFSET = 1
 
     def __init__(self, image_dims=(300, 300), nms_iou_thresh=0.6, score_threshold=0.3, anchors=None):
-        if not anchors:
+        if anchors is None:
             anchors = get_default_anchors()
         self._image_dims = image_dims
         self._nms_iou_thresh = nms_iou_thresh
@@ -27,20 +33,19 @@ class SCRFDPostProc:
         box_predictors_list = []
         class_predictors_list = []
         landmarks_predictors_list = []
-        sorted_output_branches = output_branches
         num_branches = self._num_branches
-        assert len(sorted_output_branches) % num_branches == 0, "All branches must have the same number of output nodes"
-        num_output_nodes_per_branch = len(sorted_output_branches) // num_branches
-        for branch_index in range(0, len(sorted_output_branches), num_output_nodes_per_branch):
-            box_predictors_list.append(np.reshape(sorted_output_branches[branch_index], (-1, 4)))
+        assert len(output_branches) % num_branches == 0, "All branches must have the same number of output nodes"
+        num_output_nodes_per_branch = len(output_branches) // num_branches
+        for branch_index in range(0, len(output_branches), num_output_nodes_per_branch):
+            box_predictors_list.append(np.reshape(output_branches[branch_index], (-1, 4)))
             class_predictors_list.append(
-                np.reshape(sorted_output_branches[branch_index + 1], (-1, self.NUM_CLASSES))
+                np.reshape(output_branches[branch_index + 1], (-1, self.NUM_CLASSES))
             )
 
             if num_output_nodes_per_branch > 2:
                 # Assume output is landmarks
                 landmarks_predictors_list.append(
-                    np.reshape(sorted_output_branches[branch_index + 2], (-1, 10))
+                    np.reshape(output_branches[branch_index + 2], (-1, 10))
                 )
         box_predictors = np.concatenate(box_predictors_list, axis=0)
         class_predictors = np.concatenate(class_predictors_list, axis=0)
@@ -114,6 +119,19 @@ class SCRFDPostProc:
         scores = scores[indices]
         if landmarks is not None:
             landmarks = landmarks[indices]
+
+        # A face smaller than this calibrated size is estimated to be beyond
+        # two meters and is not passed to cropping or downstream PPE detection.
+        face_widths = boxes[:, 2] - boxes[:, 0]
+        face_heights = boxes[:, 3] - boxes[:, 1]
+        within_2m = (
+            (face_widths >= MAX_DISTANCE_FACE_WIDTH)
+            | (face_heights >= MAX_DISTANCE_FACE_HEIGHT)
+        )
+        boxes = boxes[within_2m]
+        scores = scores[within_2m]
+        if landmarks is not None:
+            landmarks = landmarks[within_2m]
 
         results = {
             "detection_boxes": boxes,

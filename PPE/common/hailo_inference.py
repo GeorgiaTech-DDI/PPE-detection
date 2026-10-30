@@ -23,17 +23,18 @@ def infer(
     infer_model.output().set_format_type(FormatType.FLOAT32)
 
     with infer_model.configure() as configured_model:
-        while True:
-            next_batch = input_queue.get()
-            if not next_batch:
-                break
-            if stop_event.is_set():
+        while not stop_event.is_set():
+            try:
+                next_batch = input_queue.get(timeout=0.5)
+            except queue.Empty:
                 continue
+            if next_batch is None:
+                break
 
             input_batch, preprocessed_batch = next_batch
-            output = np.empty(infer_model.output().shape).astype(np.float32)
+            output = np.empty(infer_model.output().shape, dtype=np.float32)
             bindings = configured_model.create_bindings()
-            bindings.input().set_buffer(preprocessed_batch).astype(np.float32)
+            bindings.input().set_buffer(preprocessed_batch)
             bindings.output().set_buffer(output)
 
             inference_callback_fn = partial(
@@ -44,8 +45,10 @@ def infer(
 
             configured_model.wait_for_async_ready(timeout_ms=10000)
 
-            job = configured_model.run_async([bindings], partial(inference_callback_fn, bindings=bindings))
-        job.wait(10000)
+            job = configured_model.run_async(
+                [bindings], partial(inference_callback_fn, bindings=bindings)
+            )
+            job.wait(10000)
 
 def inference_callback(
     completion_info,
@@ -67,11 +70,11 @@ def inference_callback(
     else:
         for i, bindings in enumerate(bindings_list):
             if len(bindings._output_names) == 1:
-                result = bindings.output().get_buffer()
+                result = bindings.output().get_buffer().copy()
             else:
                 result = {
                     name: np.expand_dims(
-                        bindings.output(name).get_buffer(), axis=0
+                        bindings.output(name).get_buffer().copy(), axis=0
                     )
                     for name in bindings._output_names
                 }
