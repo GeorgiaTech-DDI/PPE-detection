@@ -164,8 +164,12 @@ def main() -> None:
 
     threads = [
         threading.Thread(
+            target=scrfd.run_preprocess_pipeline,
+            args=(input_queue, preprocessed_frames, stop_event),
+        ),
+        threading.Thread(
             target=scrfd.run_inference_pipeline,
-            args=(str(SCRFD_HEF_PATH), input_queue, face_outputs, stop_event),
+            args=(str(SCRFD_HEF_PATH), preprocessed_frames, face_outputs, stop_event),
         ),
         # Owns the second VDevice, so it runs in its own thread alongside SCRFD.
         threading.Thread(
