@@ -93,7 +93,7 @@ class FrameSaver:
             self.num_saved += 1
             return True
 
-        cv2.imwrite(str(self.save_dir / f"{stem}.jpg"), output["hires_frame"])
+        cv2.imwrite(str(self.save_dir / f"{stem}.jpg"), output["full_frame"])
 
         if self.save_labels:
             lines = []

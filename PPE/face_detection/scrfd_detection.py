@@ -49,8 +49,8 @@ def run_preprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue,
     Spins a thread which performs continuous preprocessing as frames come in.
     Params:
         input_queue: Queue of captured image frames.
-        output_queue: Queue of dicts containing a 640x640 "lores_frame" for inference and a
-            square 1920x1920 "hires_frame" for full-resolution crops.
+        output_queue: Queue of dicts containing the 640x640 inference image and the
+            untouched full-resolution "full_frame" for crops.
         stop_event: threading.Event which stops this thread.
     """
     while not stop_event.is_set():
@@ -61,7 +61,7 @@ def run_preprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue,
 
         output_queue.put({
             "lores_frame": letterbox_img(input, resize_interpolation=cv2.INTER_LINEAR),
-            "hires_frame": letterbox_img(input, size=1920, resize_interpolation=cv2.INTER_LINEAR),
+            "full_frame": input,
         })
 
 
@@ -75,7 +75,7 @@ def run_inference_pipeline(
     Spins up a loop that performs inference on any preprocessed images added to the input queue.
     Params:
         network: Neural network to perform inference with.
-        input_queue: Queue of dicts with 640x640 "lores_frame" and square "hires_frame".
+        input_queue: Queue of dicts with a 640x640 "lores_frame" and original "full_frame".
         output_queue: Outputs from the neural network. Queue of dicts containing copy of input and its output.
         stop_event: Event used to stop this pipeline. 
     """
@@ -110,7 +110,7 @@ def run_inference_pipeline(
                 configured_infer_model.run([bindings], timeout=TIMEOUT_MS)
                 output_queue.put({
                     "lores_frame": buffer_in.copy(),
-                    "hires_frame": frames["hires_frame"],
+                    "full_frame": frames["full_frame"],
                     "raw_inference": [
                         bindings.output(name).get_buffer().copy()
                         for name in infer_model.output_names
@@ -123,9 +123,9 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
     """
     Postprocesses frames from SCRFD detection. Expects all postprocessing to be done on 640x640 frames.
     Params:
-        input_queue: Queue containing dicts with "lores_frame", "hires_frame" and "raw_inference".
+        input_queue: Queue containing "lores_frame", "full_frame" and "raw_inference".
         output_queue: Queue for postprocessed frames and inferences with NMS applied.
-            Contains "inferences", "faces", "lores_frame" and "hires_frame".
+            Contains "inferences", "faces", "lores_frame" and "full_frame".
         stop_event: threading.Event to stop this pipeline.
     """
     postproc = SCRFDPostProc((640,640))
@@ -139,9 +139,15 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
         output = {}
 
         output["inferences"] = postproc.postprocess(input["raw_inference"])
-        hires_frame = input["hires_frame"]
-        img_h, img_w = hires_frame.shape[:2]
-        crop_buffer = round(CROP_BUFFER * img_w / 640)
+        full_frame = input["full_frame"]
+        img_h, img_w = full_frame.shape[:2]
+        model_h, model_w = input["lores_frame"].shape[:2]
+        scale = min(model_w / img_w, model_h / img_h)
+        resized_w = round(img_w * scale)
+        resized_h = round(img_h * scale)
+        pad_x = (model_w - resized_w) // 2
+        pad_y = (model_h - resized_h) // 2
+        crop_buffer = round(CROP_BUFFER / scale)
 
         cropped_faces = []
         within_1m = []
@@ -156,10 +162,10 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
             within_1m.append(True if width_z_score > MIN_Z_SCORE or height_z_score > MIN_Z_SCORE else False)
 
             # Convert normalized coords to pixel coords
-            px_min = x_min * img_w
-            px_max = x_max * img_w
-            py_min = y_min * img_h
-            py_max = y_max * img_h
+            px_min = (x_min * model_w - pad_x) / scale
+            px_max = (x_max * model_w - pad_x) / scale
+            py_min = (y_min * model_h - pad_y) / scale
+            py_max = (y_max * model_h - pad_y) / scale
 
             width = px_max - px_min
             height = py_max - py_min
@@ -169,7 +175,7 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
             crop_x2 = min(img_w, int(px_max + crop_buffer))
             crop_y2 = min(img_h, int(py_max + crop_buffer))
 
-            cropped_faces.append(hires_frame[crop_y1:crop_y2, crop_x1:crop_x2])
+            cropped_faces.append(full_frame[crop_y1:crop_y2, crop_x1:crop_x2])
         # Note that track IDs are assigned by run_tracking_pipeline, which sits
         # downstream of this stage. That way with multiple people within range, we
         # will still be able to tell whether someone was wearing glasses in the
@@ -177,7 +183,7 @@ def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue
         output["inferences"]["within_1m"] = within_1m
         output["faces"] = cropped_faces
         output["lores_frame"] = input["lores_frame"]
-        output["hires_frame"] = hires_frame
+        output["full_frame"] = full_frame
 
         output_queue.put(output)
 
@@ -197,14 +203,14 @@ def track_faces(postprocessed: dict, tracker: sv.ByteTrack) -> dict:
 
     Params:
         postprocessed: Dict produced by run_postprocess_pipeline, containing
-            "inferences", "faces", "lores_frame" and "hires_frame".
+            "inferences", "faces", "lores_frame" and "full_frame".
         tracker: A stateful sv.ByteTrack instance. The same instance must be reused
             across frames for track IDs to be stable.
 
     Returns:
         Dict containing:
             "lores_frame": The frame the detections were computed from.
-            "hires_frame": The corresponding square high-resolution frame.
+            "full_frame": The original full-resolution camera frame.
             "detections": sv.Detections with a populated tracker_id field.
             "tracker_ids": np.ndarray holding the track ID for each entry in "faces".
             "faces": List of cropped face images aligned with "tracker_ids".
@@ -213,7 +219,7 @@ def track_faces(postprocessed: dict, tracker: sv.ByteTrack) -> dict:
     inferences = postprocessed["inferences"]
     faces = postprocessed["faces"]
     lores_frame = postprocessed["lores_frame"]
-    hires_frame = postprocessed["hires_frame"]
+    full_frame = postprocessed["full_frame"]
 
     img_h, img_w = lores_frame.shape[:2]
     xyxy = np.asarray(inferences["detection_boxes"], dtype=np.float32).reshape(-1, 4)
@@ -238,7 +244,7 @@ def track_faces(postprocessed: dict, tracker: sv.ByteTrack) -> dict:
     return {
         "inferences": postprocessed["inferences"],
         "lores_frame": lores_frame,
-        "hires_frame": hires_frame,
+        "full_frame": full_frame,
         "detections": tracked,
         "tracker_ids": tracker_ids,
         "faces": tracked_faces,
