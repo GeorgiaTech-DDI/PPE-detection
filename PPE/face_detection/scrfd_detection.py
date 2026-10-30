@@ -29,6 +29,10 @@ FRAME_RATE = 30
 MINIMUM_CONSECUTIVE_FRAMES = 1
 
 # Types
+@dataclass
+class PreprocessedFrame:
+    hires_frame: np.ndarray
+    lores_frame: np.ndarray
 
 @dataclass
 class SCRFDOutput:
@@ -89,16 +93,40 @@ def track_faces(postprocessed: SCRFDOutput, tracker: sv.ByteTrack) -> SCRFDOutpu
 
     return postprocessed
 
+def run_preprocess_pipeline(
+    input_queue: queue.Queue[np.ndarray],
+    output_queue: queue.Queue[PreprocessedFrame],
+    stop_event: threading.Event):
+    """
+    Spins up a loop that preprocesses any images so that they may have inference run on them.
+    Params:
+        input_queue: queue of camera frames
+        output_queue: queue to which it should add its output, in format PreprocessedFrame
+        stop_event: threading event to stop this pipeline.
+    """
+    while not stop_event.is_set():
+        try:
+            input = input_queue.get(timeout=0.5) #for checking stop event
+        except queue.Empty:
+            continue
+
+        output_queue.put(
+            PreprocessedFrame(
+                lores_frame=letterbox_img(input, resize_interpolation=cv2.INTER_LINEAR),
+                hires_frame=letterbox_img(input, size=1920, resize_interpolation=cv2.INTER_LINEAR),
+            )
+        )
+
 def run_inference_pipeline(
         network: str,
-        input_queue: queue.Queue[np.ndarray],
+        input_queue: queue.Queue[PreprocessedFrame],
         output_queue: queue.Queue[SCRFDOutput],
         stop_event: threading.Event):
     """
     Spins up a loop that performs inference on any images added to the input queue.
     Params:
         network: Neural network to perform inference with.
-        input_queue: Queue of camera frames.
+        input_queue: Queue of camera frames, preprocessed.
         output_queue: Outputs from the neural network. Queue of SCRFDOutput
         stop_event: Event used to stop this pipeline. 
     """
@@ -139,12 +167,8 @@ def run_inference_pipeline(
                     frame = input_queue.get(timeout=0.5)   # blocks, times out to check stop_event
                 except queue.Empty:
                     continue
-
-                # Preprocess the data by resizing the images to squares
-                lores_frame = letterbox_img(frame, resize_interpolation=cv2.INTER_LINEAR)
-                hires_frame = letterbox_img(frame, size=1920, resize_interpolation=cv2.INTER_LINEAR)
                 
-                buffer_in[:] = lores_frame
+                buffer_in[:] = frame.lores_frame
                 configured_infer_model.run([bindings], timeout=TIMEOUT_MS)
 
                 # Run postprocessing
@@ -155,7 +179,7 @@ def run_inference_pipeline(
                     ]
                 )
                 # Set up variables for postprocess cropping
-                img_h, img_w = hires_frame.shape[:2]
+                img_h, img_w = frame.hires_frame.shape[:2]
                 crop_buffer = round(CROP_BUFFER * img_w / 640)
                 cropped_faces = []
                 inferences.within_1m = []
@@ -183,12 +207,12 @@ def run_inference_pipeline(
                     crop_x2 = min(img_w, int(px_max + crop_buffer))
                     crop_y2 = min(img_h, int(py_max + crop_buffer))
         
-                    cropped_faces.append(hires_frame[crop_y1:crop_y2, crop_x1:crop_x2])
+                    cropped_faces.append(frame.hires_frame[crop_y1:crop_y2, crop_x1:crop_x2])
 
                 output = SCRFDOutput(
                     inferences=inferences,
-                    hires_frame=hires_frame,
-                    lores_frame=lores_frame,
+                    hires_frame=frame.hires_frame,
+                    lores_frame=frame.lores_frame,
                     faces=cropped_faces,
                 )
                 output = track_faces(output, bytetracker)
