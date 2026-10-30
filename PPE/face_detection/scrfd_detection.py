@@ -252,6 +252,8 @@ def run_tracking_pipeline(input_queue: queue.Queue, output_queue: queue.Queue, s
         minimum_consecutive_frames=MINIMUM_CONSECUTIVE_FRAMES,
     )
 
+    no_faces_count = 0
+
     while not stop_event.is_set():
         try:
             input = input_queue.get(timeout=0.5)
@@ -260,12 +262,3 @@ def run_tracking_pipeline(input_queue: queue.Queue, output_queue: queue.Queue, s
 
         result = track_faces(input, tracker)
         output_queue.put(result)
-
-        if len(result["faces_by_track_id"]) == 0:
-            no_faces_count += 1
-        else:
-            no_faces_count = 0
-        if no_faces_count >= 20:
-            tracker.reset()
-            print("Reset Tracker")
-            no_faces_count = 0
