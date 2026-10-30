@@ -16,8 +16,8 @@ class PostProcessedSCRFDInference:
     detection_scores: np.ndarray
     detection_classes: np.ndarray
     num_detections: int
-    face_landmarks: Optional[np.ndarray]
-    within_1m: Optional[list[bool]]
+    face_landmarks: Optional[np.ndarray] = None
+    within_1m: Optional[list[bool]] = None
 
 class SCRFDPostProc:
     # The following params are corresponding to those used for training the model
