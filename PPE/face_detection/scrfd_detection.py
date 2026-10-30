@@ -42,7 +42,9 @@ class SCRFDOutput:
     faces: Optional[list[np.ndarray]] = None
     faces_by_id: Optional[dict[int, np.ndarray]] = None
 
-def track_faces(postprocessed: SCRFDOutput, tracker: sv.ByteTrack) -> SCRFDOutput:
+def track_faces(postprocessed: SCRFDOutput,
+                tracker: sv.ByteTrack,
+                include: Optional[list[bool]] = None) -> SCRFDOutput:
     """
     Assigns persistent track IDs to the faces detected in a single frame.
 
@@ -60,6 +62,9 @@ def track_faces(postprocessed: SCRFDOutput, tracker: sv.ByteTrack) -> SCRFDOutpu
             and face crops.
         tracker: Stateful sv.ByteTrack instance. Reuse it across frames from the
             same stream so track IDs remain consistent.
+        include: Optional mask, one entry per detection. Only detections marked True
+            are handed to ByteTrack, so excluded faces never get a track ID or appear
+            in faces_by_id. None tracks every detection.
 
     Returns:
         The same SCRFDOutput instance, with faces_by_id set to a dictionary mapping
@@ -74,11 +79,16 @@ def track_faces(postprocessed: SCRFDOutput, tracker: sv.ByteTrack) -> SCRFDOutpu
     xyxy = xyxy * np.array([img_w, img_h, img_w, img_h], dtype=np.float32)
     scores = np.asarray(inferences.detection_scores, dtype=np.float32).reshape(-1)
 
+    # Keep the original indices so tracked detections still map back to their crops.
+    kept_indices = np.arange(len(xyxy))
+    if include is not None:
+        kept_indices = kept_indices[np.asarray(include, dtype=bool)]
+
     detections = sv.Detections(
-        xyxy=xyxy,
-        confidence=scores,
-        class_id=np.zeros(len(xyxy), dtype=int),
-        data={"face_index": np.arange(len(xyxy))},
+        xyxy=xyxy[kept_indices],
+        confidence=scores[kept_indices],
+        class_id=np.zeros(len(kept_indices), dtype=int),
+        data={"face_index": kept_indices},
     )
 
     tracked = tracker.update_with_detections(detections)
@@ -121,14 +131,17 @@ def run_inference_pipeline(
         network: str,
         input_queue: queue.Queue[PreprocessedFrame],
         output_queue: queue.Queue[SCRFDOutput],
-        stop_event: threading.Event):
+        stop_event: threading.Event,
+        track_only_within_1m: bool = False):
     """
     Spins up a loop that performs inference on any images added to the input queue.
     Params:
         network: Neural network to perform inference with.
         input_queue: Queue of camera frames, preprocessed.
         output_queue: Outputs from the neural network. Queue of SCRFDOutput
-        stop_event: Event used to stop this pipeline. 
+        stop_event: Event used to stop this pipeline.
+        track_only_within_1m: If True, only faces estimated to be within 1m are given
+            to ByteTrack, so faces_by_id only contains faces within 1m.
     """
 
     # Setup VDevice to be shared across frames with Round Robin scheuler
@@ -216,6 +229,10 @@ def run_inference_pipeline(
                     lores_frame=frame.lores_frame,
                     faces=cropped_faces,
                 )
-                output = track_faces(output, bytetracker)
+                output = track_faces(
+                    output,
+                    bytetracker,
+                    include=inferences.within_1m if track_only_within_1m else None,
+                )
 
                 output_queue.put(output)
