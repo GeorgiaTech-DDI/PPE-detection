@@ -38,7 +38,7 @@ QUEUE_TIMEOUT_S = 0.5
 THREAD_JOIN_TIMEOUT_S = 2
 
 
-def run_goggle_pipeline(input_queue: queue.Queue,
+def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
                         goggle_input_queue: queue.Queue,
                         goggle_output_queue: queue.Queue,
                         output_queue: queue.Queue,
@@ -72,7 +72,7 @@ def run_goggle_pipeline(input_queue: queue.Queue,
 
         # goggle_detection feeds camera frames to the model without a colour
         # conversion, so the crops are passed through the same way.
-        faces = [face for face in output["faces"] if face.size > 0]
+        faces = [face for face in output.faces if face.size > 0]
         for face in faces:
             goggle_input_queue.put((face, letterbox_img(face)))
 
@@ -162,16 +162,8 @@ def main() -> None:
 
     threads = [
         threading.Thread(
-            target=scrfd.run_preprocess_pipeline,
-            args=(input_queue, preprocessed_frames, stop_event),
-        ),
-        threading.Thread(
             target=scrfd.run_inference_pipeline,
-            args=(str(SCRFD_HEF_PATH), preprocessed_frames, inferences, stop_event),
-        ),
-        threading.Thread(
-            target=scrfd.run_postprocess_pipeline,
-            args=(inferences, face_outputs, stop_event),
+            args=(str(SCRFD_HEF_PATH), input_queue, face_outputs, stop_event),
         ),
         # Owns the second VDevice, so it runs in its own thread alongside SCRFD.
         threading.Thread(

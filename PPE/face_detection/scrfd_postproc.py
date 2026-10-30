@@ -1,5 +1,8 @@
+from typing import Optional
+
 import numpy as np
 import cv2
+from dataclasses import dataclass
 
 def get_default_anchors():
     return {
@@ -7,6 +10,14 @@ def get_default_anchors():
         "min_sizes": [[16, 32], [64, 128], [256, 512]],
     }
 
+@dataclass
+class PostProcessedSCRFDInference:
+    detection_boxes: np.ndarray
+    detection_scores: np.ndarray
+    detection_classes: np.ndarray
+    num_detections: int
+    face_landmarks: Optional[np.ndarray]
+    within_1m: Optional[list[bool]]
 
 class SCRFDPostProc:
     # The following params are corresponding to those used for training the model
@@ -83,7 +94,7 @@ class SCRFDPostProc:
         y2 = anchors[:, 1] + box_detections[:, 3] * anchors[:, 3]
         return np.stack([x1, y1, x2, y2], axis=-1)
 
-    def postprocess(self, endnodes):
+    def postprocess(self, endnodes) -> PostProcessedSCRFDInference:
         box_predictions, classes_predictions, landmarks_predictors = self.collect_box_class_predictions(endnodes)
         scores = classes_predictions[:, 0]
         boxes = self._decode_boxes(box_predictions, self._anchors)
@@ -115,14 +126,14 @@ class SCRFDPostProc:
         if landmarks is not None:
             landmarks = landmarks[indices]
 
-        results = {
-            "detection_boxes": boxes,
-            "detection_scores": scores,
-            "detection_classes": np.ones(len(scores), dtype=np.int16),
-            "num_detections": len(scores),
-        }
+        results = PostProcessedSCRFDInference(
+            detection_boxes=boxes,
+            detection_scores=scores,
+            detection_classes=np.ones(len(scores), dtype=np.int16),
+            num_detections=len(scores)
+        )
 
         if landmarks is not None:
-            results["face_landmarks"] = landmarks
+            results.face_landmarks = landmarks
 
         return results

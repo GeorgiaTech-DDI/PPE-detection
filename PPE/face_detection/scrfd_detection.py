@@ -1,6 +1,8 @@
 import queue
 import threading
 import supervision as sv
+from dataclasses import dataclass
+from typing import Optional
 
 from hailo_platform import VDevice, FormatType, ConfigureParams, HailoSchedulingAlgorithm
 
@@ -26,46 +28,95 @@ MINIMUM_MATCHING_THRESHOLD = 0.8
 FRAME_RATE = 30
 MINIMUM_CONSECUTIVE_FRAMES = 1
 
+# Types
 
-def run_preprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue, stop_event: threading.Event):
+@dataclass
+class SCRFDOutput:
+    inferences: PostProcessedSCRFDInference
+    hires_frame: np.ndarray
+    lores_frame: np.ndarray
+    faces: Optional[list[np.ndarray]] = None
+    faces_by_id: Optional[dict[int, np.ndarray]] = None
+
+def track_faces(postprocessed: SCRFDOutput, tracker: sv.ByteTrack) -> SCRFDOutput:
     """
-    Spins a thread which performs continuous preprocessing as frames come in.
+    Assigns persistent track IDs to the faces detected in a single frame.
+
+    The SCRFD postprocessor reports boxes normalized to the preprocessed frame, so
+    they are converted back to pixel coordinates before being handed to ByteTrack.
+    IoU based association is only meaningful in unnormalized coordinates.
+
+    ByteTrack only reports detections it managed to associate with a track, so
+    faces_by_id contains only crops associated with a track. The faces field remains
+    unchanged. A face missing from one frame may reappear under the same ID if the
+    tracker can re-associate it.
+
     Params:
-        input_queue: Queue of captured image frames.
-        output_queue: Queue of dicts containing a 640x640 "lores_frame" for inference and a
-            square 1920x1920 "hires_frame" for full-resolution crops.
-        stop_event: threading.Event which stops this thread.
+        postprocessed: SCRFDOutput containing the frame's detections, image frames,
+            and face crops.
+        tracker: Stateful sv.ByteTrack instance. Reuse it across frames from the
+            same stream so track IDs remain consistent.
+
+    Returns:
+        The same SCRFDOutput instance, with faces_by_id set to a dictionary mapping
+        each ByteTrack ID to its corresponding tracked face crop. The detections,
+        frames, and faces fields are otherwise preserved.
     """
-    while not stop_event.is_set():
-        try:
-            input = input_queue.get(timeout=0.5) #for checking stop event
-        except queue.Empty:
-            continue
+    inferences = postprocessed.inferences
+    faces = postprocessed.faces
 
-        output_queue.put({
-            "lores_frame": letterbox_img(input, resize_interpolation=cv2.INTER_LINEAR),
-            "hires_frame": letterbox_img(input, size=1920, resize_interpolation=cv2.INTER_LINEAR),
-        })
+    img_h, img_w = postprocessed.lores_frame.shape[:2]
+    xyxy = np.asarray(inferences.detection_boxes, dtype=np.float32).reshape(-1, 4)
+    xyxy = xyxy * np.array([img_w, img_h, img_w, img_h], dtype=np.float32)
+    scores = np.asarray(inferences.detection_scores, dtype=np.float32).reshape(-1)
 
+    detections = sv.Detections(
+        xyxy=xyxy,
+        confidence=scores,
+        class_id=np.zeros(len(xyxy), dtype=int),
+        data={"face_index": np.arange(len(xyxy))},
+    )
 
+    tracked = tracker.update_with_detections(detections)
+
+    tracker_ids = tracked.tracker_id
+    if tracker_ids is None:
+        tracker_ids = np.array([], dtype=int)
+    face_indices = np.asarray(tracked.data.get("face_index", []), dtype=int)
+    tracked_faces = [faces[i] for i in face_indices if i < len(faces)]
+
+    postprocessed.faces_by_id = dict(zip(tracker_ids.tolist(), tracked_faces))
+
+    return postprocessed
 
 def run_inference_pipeline(
         network: str,
-        input_queue: queue.Queue,
-        output_queue: queue.Queue,
+        input_queue: queue.Queue[np.ndarray],
+        output_queue: queue.Queue[SCRFDOutput],
         stop_event: threading.Event):
     """
-    Spins up a loop that performs inference on any preprocessed images added to the input queue.
+    Spins up a loop that performs inference on any images added to the input queue.
     Params:
         network: Neural network to perform inference with.
-        input_queue: Queue of dicts with 640x640 "lores_frame" and square "hires_frame".
-        output_queue: Outputs from the neural network. Queue of dicts containing copy of input and its output.
+        input_queue: Queue of camera frames.
+        output_queue: Outputs from the neural network. Queue of SCRFDOutput
         stop_event: Event used to stop this pipeline. 
     """
 
+    # Setup VDevice to be shared across frames with Round Robin scheuler
     params = VDevice.create_params()
     params.group_id = "SHARED"
     params.scheduling_algorithm = HailoSchedulingAlgorithm.ROUND_ROBIN
+
+    postproc = SCRFDPostProc((640, 640))
+    
+    bytetracker = sv.ByteTrack(
+        track_activation_threshold=TRACK_ACTIVATION_THRESHOLD,
+        lost_track_buffer=LOST_TRACK_BUFFER,
+        minimum_matching_threshold=MINIMUM_MATCHING_THRESHOLD,
+        frame_rate=FRAME_RATE,
+        minimum_consecutive_frames=MINIMUM_CONSECUTIVE_FRAMES,
+    )
 
     with VDevice(params) as vdevice:
         infer_model = vdevice.create_infer_model(network)
@@ -85,180 +136,61 @@ def run_inference_pipeline(
             # Spin the thread (Wheeeeeeee!)
             while not stop_event.is_set():
                 try:
-                    frames = input_queue.get(timeout=0.5)   # blocks, times out to check stop_event
+                    frame = input_queue.get(timeout=0.5)   # blocks, times out to check stop_event
                 except queue.Empty:
                     continue
 
-                buffer_in[:] = frames["lores_frame"]
+                # Preprocess the data by resizing the images to squares
+                lores_frame = letterbox_img(frame, resize_interpolation=cv2.INTER_LINEAR)
+                hires_frame = letterbox_img(frame, size=1920, resize_interpolation=cv2.INTER_LINEAR)
+                
+                buffer_in[:] = lores_frame
                 configured_infer_model.run([bindings], timeout=TIMEOUT_MS)
-                output_queue.put({
-                    "lores_frame": buffer_in.copy(),
-                    "hires_frame": frames["hires_frame"],
-                    "raw_inference": [
+
+                # Run postprocessing
+                inferences = postproc.postprocess(
+                    [
                         bindings.output(name).get_buffer().copy()
                         for name in infer_model.output_names
-                    ],
-                })
+                    ]
+                )
+                # Set up variables for postprocess cropping
+                img_h, img_w = hires_frame.shape[:2]
+                crop_buffer = round(CROP_BUFFER * img_w / 640)
+                cropped_faces = []
+                inferences.within_1m = []
+                for (x_min, y_min, x_max, y_max) in inferences.detection_boxes:
+                    # Find normalized width and height, compare to mean
+                    width = x_max - x_min
+                    height = y_max - y_min
+        
+                    width_z_score = (width - MEAN_FACE_WIDTH_1M) / STDEV_FACE_WIDTH_1M
+                    height_z_score = (height - MEAN_FACE_HEIGHT_1M) / STDEV_FACE_HEIGHT_1M
+        
+                    inferences.within_1m.append(True if width_z_score > MIN_Z_SCORE or height_z_score > MIN_Z_SCORE else False)
+        
+                    # Convert normalized coords to pixel coords
+                    px_min = x_min * img_w
+                    px_max = x_max * img_w
+                    py_min = y_min * img_h
+                    py_max = y_max * img_h
+        
+                    width = px_max - px_min
+                    height = py_max - py_min
+        
+                    crop_x1 = max(0, int(px_min - crop_buffer))
+                    crop_y1 = max(0, int(py_min - crop_buffer))
+                    crop_x2 = min(img_w, int(px_max + crop_buffer))
+                    crop_y2 = min(img_h, int(py_max + crop_buffer))
+        
+                    cropped_faces.append(hires_frame[crop_y1:crop_y2, crop_x1:crop_x2])
 
+                output = SCRFDOutput(
+                    inferences=inferences,
+                    hires_frame=hires_frame,
+                    lores_frame=lores_frame,
+                    faces=cropped_faces,
+                )
+                output = track_faces(output, bytetracker)
 
-
-def run_postprocess_pipeline(input_queue: queue.Queue, output_queue: queue.Queue, stop_event: threading.Event):
-    """
-    Postprocesses frames from SCRFD detection. Expects all postprocessing to be done on 640x640 frames.
-    Params:
-        input_queue: Queue containing dicts with "lores_frame", "hires_frame" and "raw_inference".
-        output_queue: Queue for postprocessed frames and inferences with NMS applied.
-            Contains "inferences", "faces", "lores_frame" and "hires_frame".
-        stop_event: threading.Event to stop this pipeline.
-    """
-    postproc = SCRFDPostProc((640,640))
-
-    while not stop_event.is_set():
-        try:
-            input = input_queue.get(timeout=0.5)
-        except queue.Empty:
-            continue
-
-        output = {}
-
-        output["inferences"] = postproc.postprocess(input["raw_inference"])
-        hires_frame = input["hires_frame"]
-        img_h, img_w = hires_frame.shape[:2]
-        crop_buffer = round(CROP_BUFFER * img_w / 640)
-
-        cropped_faces = []
-        within_1m = []
-        for (x_min, y_min, x_max, y_max) in output["inferences"]["detection_boxes"]:
-            # Find normalized width and height, compare to mean
-            width = x_max - x_min
-            height = y_max - y_min
-
-            width_z_score = (width - MEAN_FACE_WIDTH_1M) / STDEV_FACE_WIDTH_1M
-            height_z_score = (height - MEAN_FACE_HEIGHT_1M) / STDEV_FACE_HEIGHT_1M
-
-            within_1m.append(True if width_z_score > MIN_Z_SCORE or height_z_score > MIN_Z_SCORE else False)
-
-            # Convert normalized coords to pixel coords
-            px_min = x_min * img_w
-            px_max = x_max * img_w
-            py_min = y_min * img_h
-            py_max = y_max * img_h
-
-            width = px_max - px_min
-            height = py_max - py_min
-
-            crop_x1 = max(0, int(px_min - crop_buffer))
-            crop_y1 = max(0, int(py_min - crop_buffer))
-            crop_x2 = min(img_w, int(px_max + crop_buffer))
-            crop_y2 = min(img_h, int(py_max + crop_buffer))
-
-            cropped_faces.append(hires_frame[crop_y1:crop_y2, crop_x1:crop_x2])
-        # Note that track IDs are assigned by run_tracking_pipeline, which sits
-        # downstream of this stage. That way with multiple people within range, we
-        # will still be able to tell whether someone was wearing glasses in the
-        # last x time units.
-        output["inferences"]["within_1m"] = within_1m
-        output["faces"] = cropped_faces
-        output["lores_frame"] = input["lores_frame"]
-        output["hires_frame"] = hires_frame
-
-        output_queue.put(output)
-
-
-def track_faces(postprocessed: dict, tracker: sv.ByteTrack) -> dict:
-    """
-    Assigns persistent track IDs to the faces detected in a single frame.
-
-    The SCRFD postprocessor reports boxes normalized to the preprocessed frame, so
-    they are converted back to pixel coordinates before being handed to ByteTrack.
-    IoU based association is only meaningful in unnormalized coordinates.
-
-    ByteTrack only reports detections it managed to associate with a track, so
-    "faces" is a subset of the crops produced by the postprocessing stage. A face
-    missing from one frame simply reappears under the same ID once the tracker can
-    re-associate it.
-
-    Params:
-        postprocessed: Dict produced by run_postprocess_pipeline, containing
-            "inferences", "faces", "lores_frame" and "hires_frame".
-        tracker: A stateful sv.ByteTrack instance. The same instance must be reused
-            across frames for track IDs to be stable.
-
-    Returns:
-        Dict containing:
-            "lores_frame": The frame the detections were computed from.
-            "hires_frame": The corresponding square high-resolution frame.
-            "detections": sv.Detections with a populated tracker_id field.
-            "tracker_ids": np.ndarray holding the track ID for each entry in "faces".
-            "faces": List of cropped face images aligned with "tracker_ids".
-            "faces_by_track_id": Maps a track ID to its cropped face image.
-    """
-    inferences = postprocessed["inferences"]
-    faces = postprocessed["faces"]
-    lores_frame = postprocessed["lores_frame"]
-    hires_frame = postprocessed["hires_frame"]
-
-    img_h, img_w = lores_frame.shape[:2]
-    xyxy = np.asarray(inferences["detection_boxes"], dtype=np.float32).reshape(-1, 4)
-    xyxy = xyxy * np.array([img_w, img_h, img_w, img_h], dtype=np.float32)
-    scores = np.asarray(inferences["detection_scores"], dtype=np.float32).reshape(-1)
-
-    detections = sv.Detections(
-        xyxy=xyxy,
-        confidence=scores,
-        class_id=np.zeros(len(xyxy), dtype=int),
-        data={"face_index": np.arange(len(xyxy))},
-    )
-
-    tracked = tracker.update_with_detections(detections)
-
-    tracker_ids = tracked.tracker_id
-    if tracker_ids is None:
-        tracker_ids = np.array([], dtype=int)
-    face_indices = np.asarray(tracked.data.get("face_index", []), dtype=int)
-    tracked_faces = [faces[i] for i in face_indices if i < len(faces)]
-
-    return {
-        "inferences": postprocessed["inferences"],
-        "lores_frame": lores_frame,
-        "hires_frame": hires_frame,
-        "detections": tracked,
-        "tracker_ids": tracker_ids,
-        "faces": tracked_faces,
-        "faces_by_track_id": dict(zip(tracker_ids.tolist(), tracked_faces)),
-    }
-
-
-def run_tracking_pipeline(input_queue: queue.Queue, output_queue: queue.Queue, stop_event: threading.Event):
-    """
-    Spins a thread that assigns persistent IDs to detected faces using ByteTrack.
-
-    This is kept as a separate stage from postprocessing so that the tracker, which
-    is stateful and not thread safe, is only ever touched by a single thread, and so
-    that the frame order it sees is defined by this queue alone.
-
-    Params:
-        input_queue: Queue containing dicts produced by run_postprocess_pipeline.
-        output_queue: Queue for the tracked results. Each entry is the input dict
-            augmented with the keys added by track_faces, most notably
-            "tracker_ids" and "faces_by_track_id".
-        stop_event: threading.Event to stop this pipeline.
-    """
-    tracker = sv.ByteTrack(
-        track_activation_threshold=TRACK_ACTIVATION_THRESHOLD,
-        lost_track_buffer=LOST_TRACK_BUFFER,
-        minimum_matching_threshold=MINIMUM_MATCHING_THRESHOLD,
-        frame_rate=FRAME_RATE,
-        minimum_consecutive_frames=MINIMUM_CONSECUTIVE_FRAMES,
-    )
-
-    no_faces_count = 0
-
-    while not stop_event.is_set():
-        try:
-            input = input_queue.get(timeout=0.5)
-        except queue.Empty:
-            continue
-
-        result = track_faces(input, tracker)
-        output_queue.put(result)
+                output_queue.put(output)
