@@ -16,14 +16,6 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-# The subpackages import their siblings by bare module name (for example
-# `from scrfd_postproc import *`), so their directories must be importable too.
-for _subpackage in ("face_detection", "goggle_detection"):
-    _subpackage_path = str(SCRIPT_DIR / _subpackage)
-    if _subpackage_path not in sys.path:
-        sys.path.append(_subpackage_path)
-
-#from common.tools import init_rpicam2
 from common.camera_utils import letterbox_img, init_rpicam2
 from face_detection import scrfd_detection as scrfd
 from goggle_detection import goggle_detection as goggles
@@ -34,7 +26,7 @@ CAMERA_WIDTH = 1920
 CAMERA_HEIGHT = 1080
 
 SCRFD_HEF_PATH = SCRIPT_DIR / "face_detection" / "scrfd_500m.hef"
-GOGGLE_HEF_PATH = SCRIPT_DIR / "goggle_detection" / "matrix_f26_best_10232026.hef"
+GOGGLE_HEF_PATH = SCRIPT_DIR / "goggle_detection" / "hybrid_dataset_model.hef"
 
 WINDOW_NAME = "Face Detections"
 TILE_SIZE = 256

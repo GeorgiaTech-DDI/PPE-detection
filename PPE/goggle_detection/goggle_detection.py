@@ -15,8 +15,6 @@ from hailo_platform import (
 )
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-# Make `common` importable when running the script from any directory.
-sys.path.insert(0, str(SCRIPT_DIR.parent))
 
 DEFAULT_LABELS_PATH = SCRIPT_DIR / "goggle_labels.txt"
 DEFAULT_CONFIG_PATH = SCRIPT_DIR / "config.json"

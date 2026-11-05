@@ -7,4 +7,4 @@ name = "PPE-Detection"
 version = "0.1.0"
  
 [tool.setuptools.packages.find]
-include = ["common", "goggle_detection", "face_detection"]
+include = ["common*", "goggle_detection*", "face_detection*"]

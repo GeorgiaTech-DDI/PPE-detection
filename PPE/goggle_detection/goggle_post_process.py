@@ -10,8 +10,8 @@ tracklet_history = {}
 trail_length = 30 
 # Only draw trail for certain classes (e.g., person=0, phone=67 in COCO)
 TRACKLET_CLASSES = [1]  # PERSON, SMARTPHONE
-from led_display import LEDDisplay
-from led_config import (
+from .led_display import LEDDisplay
+from .led_config import (
     LED_WIDTH,
     LED_HEIGHT,
     LED_PIN,
