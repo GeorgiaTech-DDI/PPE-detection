@@ -3,3 +3,6 @@
 .venv/
 *.log
 .idea/
+PPE_Detection.egg-info/
+__pycache__/
+captures/
