@@ -4,6 +4,7 @@ import queue
 import sys
 import threading
 import time
+import config
 from pathlib import Path
 from dataclasses import dataclass
 from gpiozero import LED
@@ -24,9 +25,6 @@ from goggle_state import GoggleState, GoggleStateTracker, WearState, score_frame
 
 CAMERA_WIDTH = 1920
 CAMERA_HEIGHT = 1080
-
-SCRFD_HEF_PATH = SCRIPT_DIR / "face_detection" / "scrfd_500m.hef"
-GOGGLE_HEF_PATH = SCRIPT_DIR / "goggle_detection" / "hybrid_dataset_model.hef"
 
 WINDOW_NAME = "Face Detections"
 TILE_SIZE = 256
@@ -59,7 +57,8 @@ def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
                         goggle_output_queue: queue.Queue,
                         output_queue: queue.Queue[GoggleOutput],
                         size: int,
-                        config_data: dict,
+                        score_threshold: float,
+                        max_boxes: int,
                         stop_event: threading.Event) -> None:
     """
     Runs the goggles model on every tracked face crop produced by the SCRFD pipeline.
@@ -76,7 +75,6 @@ def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
         output_queue: Queue of GoggleOutput, one per SCRFD frame (including frames
             without faces, so frame counts stay in step with ByteTrack).
         size: Goggles model input size.
-        config_data: Parsed config.json used by extract_detections.
         stop_event: threading.Event to stop this pipeline.
     """
     while not stop_event.is_set():
@@ -104,7 +102,7 @@ def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
             except queue.Empty:
                 continue
             face_detections[track_id] = (
-                face, extract_detections(face, raw_inference, config_data)
+                face, extract_detections(face, raw_inference, score_threshold, max_boxes)
             )
 
         output_queue.put(GoggleOutput(timestamp=timestamp, face_detections=face_detections))
@@ -178,9 +176,8 @@ def main() -> None:
     green_led = LED(23)
 
     labels = goggles.get_labels(str(goggles.DEFAULT_LABELS_PATH))
-    config_data = goggles.load_json_file(goggles.DEFAULT_CONFIG_PATH)
 
-    goggle_hef = HEF(str(GOGGLE_HEF_PATH))
+    goggle_hef = HEF(str(config.GOGGLE_DETECT_HEF_PATH))
     model_input_height, model_input_width, _ = goggle_hef.get_input_vstream_infos()[0].shape
     assert model_input_width == model_input_height, "We only support models with square input widths/heights"
 
@@ -204,17 +201,17 @@ def main() -> None:
         ),
         threading.Thread(
             target=scrfd.run_inference_pipeline,
-            args=(str(SCRFD_HEF_PATH), preprocessed_frames, face_outputs, stop_event),
+            args=(str(config.FACE_DETECT_HEF_PATH), preprocessed_frames, face_outputs, stop_event),
         ),
         # Owns the second VDevice, so it runs in its own thread alongside SCRFD.
         threading.Thread(
             target=run_goggle_pipeline,
             args=(face_outputs, goggle_inputs, goggle_outputs, outputs,
-                  model_input_height, config_data, stop_event),
+                  model_input_height, config.SCORE_THRESHOLD, config.MAX_BOXES_PER_IMAGE, stop_event),
         ),
         threading.Thread(
             target=goggles.run_inference_pipeline,
-            args=(str(GOGGLE_HEF_PATH), goggle_inputs, goggle_outputs, stop_event),
+            args=(str(config.GOGGLE_DETECT_HEF_PATH), goggle_inputs, goggle_outputs, stop_event),
         )
     ]
 

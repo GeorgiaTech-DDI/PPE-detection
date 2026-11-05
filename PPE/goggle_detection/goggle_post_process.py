@@ -29,13 +29,17 @@ _led = LEDDisplay(
 )
 #_led.begin()
 
-def inference_result_handler(original_frame, infer_results, labels, config_data, tracker=None, draw_trail=False):
-    detections = extract_detections(original_frame, infer_results, config_data)
+def inference_result_handler(original_frame, 
+                             infer_results, 
+                             labels, 
+                             score_threshold,
+                             max_boxes,
+                             tracker=None, 
+                             draw_trail=False):
+    detections = extract_detections(original_frame, infer_results, score_threshold, max_boxes)
 
     classes = detections["detection_classes"]
     scores = detections["detection_scores"]
-
-    score_threshold = config_data["visualization_params"].get("score_thres", 0.15)
 
     person_found = False
     glasses_found = False
@@ -141,22 +145,19 @@ def denormalize_and_rm_pad(box: list, size: int, padding_length: int, input_heig
     return [box[1], box[0], box[3], box[2]]
 
 
-def extract_detections(image: np.ndarray, detections: list, config_data) -> dict:
+def extract_detections(image: np.ndarray, detections: list, score_threshold: float, max_boxes: int) -> dict:
     """
     Extract detections from the input data.
 
     Args:
         image (np.ndarray): Image to draw on.
         detections (list): Raw detections from the model.
-        config_data (Dict): Loaded JSON config containing post-processing metadata.
+        score_threshold (float): Rejects any detections with a confidence below this threshold. 
+        max_boxes (int): The maximum number of detections to extract.
 
     Returns:
         dict: Filtered detection results containing 'detection_boxes', 'detection_classes', 'detection_scores', and 'num_detections'.
     """
-
-    visualization_params = config_data["visualization_params"]
-    score_threshold = visualization_params.get("score_thres", 0.5)
-    max_boxes = visualization_params.get("max_boxes_to_draw", 50)
 
     img_height, img_width = image.shape[:2]
     size = max(img_height, img_width)
