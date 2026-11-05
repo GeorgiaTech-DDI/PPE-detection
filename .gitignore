@@ -3,3 +3,5 @@
 .venv/
 *.log
 .idea/
+PPE_Detection.egg-info/
+__pycache__/
