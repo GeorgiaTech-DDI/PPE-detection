@@ -102,7 +102,7 @@ def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
             if face.size > 0
         }
         for track_id, face in faces_by_id.items():
-            goggle_input_queue.put(((track_id, face), letterbox_img(face)))
+            goggle_input_queue.put(((track_id, face), letterbox_img(face, size=size)))
 
         face_detections = {}
         while len(face_detections) < len(faces_by_id) and not stop_event.is_set():
@@ -163,16 +163,12 @@ def render_face_grid(face_detections: dict[int, tuple[np.ndarray, dict]],
             labels,
         )
 
-        goggle_state = states.get(track_id)
-        if goggle_state is not None:
-            color = STATE_COLORS[goggle_state.state]
-            score = goggle_state.window_score
-            caption = f"#{track_id} {goggle_state.state.value}"
-            if score is not None:
-                caption += f" {score:.2f}"
-            cv2.rectangle(tile, (0, 0), (TILE_SIZE - 1, TILE_SIZE - 1), color, 4)
-            cv2.putText(tile, caption, (8, TILE_SIZE - 12),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2, cv2.LINE_AA)
+        goggle_state = states[track_id]
+        color = STATE_COLORS[goggle_state.state]
+        caption = f"#{track_id} {goggle_state.state.value} {goggle_state.window_score:.2f}"
+        cv2.rectangle(tile, (0, 0), (TILE_SIZE - 1, TILE_SIZE - 1), color, 4)
+        cv2.putText(tile, caption, (8, TILE_SIZE - 12),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2, cv2.LINE_AA)
 
         row, col = divmod(i, cols)
         canvas[row * TILE_SIZE:(row + 1) * TILE_SIZE, col * TILE_SIZE:(col + 1) * TILE_SIZE] = tile
