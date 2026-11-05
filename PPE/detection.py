@@ -6,6 +6,7 @@ import threading
 import time
 from pathlib import Path
 from dataclasses import dataclass
+from gpiozero import LED
 
 import cv2
 import numpy as np
@@ -22,8 +23,8 @@ for _subpackage in ("face_detection", "goggle_detection"):
     if _subpackage_path not in sys.path:
         sys.path.append(_subpackage_path)
 
-from common.tools import init_rpicam2
-from common.utils import letterbox_img
+#from common.tools import init_rpicam2
+from common.camera_utils import letterbox_img, init_rpicam2
 from face_detection import scrfd_detection as scrfd
 from goggle_detection import goggle_detection as goggles
 from goggle_detection.goggle_post_process import draw_detections, extract_detections
@@ -180,6 +181,9 @@ def main() -> None:
     """Runs the SCRFD pipeline followed by the goggles model, and displays the faces."""
     camera = init_rpicam2(CAMERA_WIDTH, CAMERA_HEIGHT)
     assert camera is not None, "Failed to open the Raspberry Pi camera."
+
+    red_led = LED(24)
+    green_led = LED(23)
 
     labels = goggles.get_labels(str(goggles.DEFAULT_LABELS_PATH))
     config_data = goggles.load_json_file(goggles.DEFAULT_CONFIG_PATH)

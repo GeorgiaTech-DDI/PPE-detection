@@ -1,4 +1,4 @@
-from common.tools import init_rpicam2
+from common.camera_utils import init_rpicam2
 from scrfd_detection import *
 from pathlib import Path
 import threading

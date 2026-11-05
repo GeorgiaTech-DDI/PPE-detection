@@ -1,6 +1,6 @@
-from .data_classes import InputContext
 import cv2
 import threading
+import numpy as np
 
 class PiCamera2CaptureAdapter:
     """
@@ -61,29 +61,6 @@ class PiCamera2CaptureAdapter:
             except Exception:
                 pass
 
-def init_input_source(input_context: InputContext) -> cv2.VideoCapture:
-    cap = cv2.VideoCapture(0)
-
-    if not cap.isOpened():
-        raise IOError(f"Cannot open video source: {input_context.input}")
-
-    if input_context.frame_rate:
-        cap.set(cv2.CAP_PROP_FPS, input_context.frame_rate)
-
-    res_map = {"sd": (640, 480), "hd": (1280, 720), "fhd": (1920, 1080)}
-    if input_context.resolution: 
-        w, h = res_map[input_context.resolution]
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-    else:
-        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-    input_context.cap = cap
-    input_context.width = w
-    input_context.height = h
-    return input_context
-
 
 def init_rpicam2(width: int, height: int):
     """
@@ -120,3 +97,35 @@ def init_rpicam2(width: int, height: int):
         except Exception:
             pass
         return None
+
+def letterbox_img(image: np.ndarray,
+                  size: int = 640,
+                  fill: int = 0,
+                  resize_interpolation: int = cv2.INTER_CUBIC):
+    """
+    Letterboxes an image to the model input size, preserving aspect ratio.
+    """
+    h, w = image.shape[:2]
+
+    scale = min(size / w, size / h)
+    new_w = round(w * scale)
+    new_h = round(h * scale)
+
+    image = cv2.resize(image, (new_w, new_h), interpolation=resize_interpolation)
+
+    pad_x = size - new_w
+    pad_y = size - new_h
+
+    left = pad_x // 2
+    right = pad_x - left
+    top = pad_y // 2
+    bottom = pad_y - top
+
+    image = cv2.copyMakeBorder(
+        image,
+        top, bottom, left, right,
+        cv2.BORDER_CONSTANT,
+        value=(fill, fill, fill)
+    )
+
+    return np.ascontiguousarray(image)
