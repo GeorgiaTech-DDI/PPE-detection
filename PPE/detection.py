@@ -213,7 +213,6 @@ def main() -> None:
         threading.Thread(
             target=scrfd.run_inference_pipeline,
             args=(str(SCRFD_HEF_PATH), preprocessed_frames, face_outputs, stop_event),
-            kwargs={"track_only_within_1m": True},
         ),
         # Owns the second VDevice, so it runs in its own thread alongside SCRFD.
         threading.Thread(

@@ -4,12 +4,6 @@ import numpy as np
 import cv2
 from dataclasses import dataclass
 
-def get_default_anchors():
-    return {
-        "steps": [8, 16, 32],
-        "min_sizes": [[16, 32], [64, 128], [256, 512]],
-    }
-
 @dataclass
 class PostProcessedSCRFDInference:
     detection_boxes: np.ndarray
@@ -17,7 +11,16 @@ class PostProcessedSCRFDInference:
     detection_classes: np.ndarray
     num_detections: int
     face_landmarks: Optional[np.ndarray] = None
-    within_1m: Optional[list[bool]] = None
+
+def get_default_anchors():
+    """
+    returns the default anchor configs used by SCRFD during
+    face detection. Used to generate bounding boxes and apply NMS.
+    """
+    return {
+        "steps": [8, 16, 32],
+        "min_sizes": [[16, 32], [64, 128], [256, 512]],
+    }
 
 class SCRFDPostProc:
     # The following params are corresponding to those used for training the model
