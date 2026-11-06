@@ -11,3 +11,14 @@ FACE_DETECT_HEF_PATH = SCRIPT_DIR / "models" / "scrfd_500m.hef"
 GOGGLE_DETECT_HEF_PATH = SCRIPT_DIR / "models" / "hybrid_dataset_model.hef"
 SCORE_THRESHOLD = 0.4
 MAX_BOXES_PER_IMAGE = 500
+
+LED_WIDTH = 32
+LED_HEIGHT = 8
+LED_PIN = 18 # change if your data pin is different
+LED_BRIGHTNESS = 80
+LED_PIXEL_ORDER = "GRB"
+LED_SIMULATE = False  # set True if testing without hardware
+LED_FREQUENCY_HZ = 800000
+LED_INVERT = False
+LED_CHANNEL = 0
+LED_DMA = 10

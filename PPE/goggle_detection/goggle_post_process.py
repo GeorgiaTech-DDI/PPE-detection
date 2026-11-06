@@ -1,3 +1,5 @@
+from typing import Literal
+
 import cv2
 import numpy as np
 
@@ -9,27 +11,9 @@ tracklet_history = {}
 # Maximum number of past frames to display
 trail_length = 30 
 # Only draw trail for certain classes (e.g., person=0, phone=67 in COCO)
-TRACKLET_CLASSES = [1]  # PERSON, SMARTPHONE
-from .led_display import LEDDisplay
-from .led_config import (
-    LED_WIDTH,
-    LED_HEIGHT,
-    LED_PIN,
-    LED_BRIGHTNESS,
-    LED_PIXEL_ORDER,
-    LED_SIMULATE,
-)
-_led = LEDDisplay(
-    width=LED_WIDTH,
-    height=LED_HEIGHT,
-    pin=LED_PIN,
-    brightness=LED_BRIGHTNESS,
-    pixel_order=LED_PIXEL_ORDER,
-    simulate=LED_SIMULATE,
-)
-#_led.begin()
+TRACKLET_CLASSES = [1]
 
-def draw_detection(image: np.ndarray, box: list, labels: list, score: float, color: tuple):
+def draw_detection(image: np.ndarray, box: list, labels: list, score: float, color: tuple, track=False):
     """
     Draw box and label for one detection.
 

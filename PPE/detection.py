@@ -7,7 +7,6 @@ import time
 import config
 from pathlib import Path
 from dataclasses import dataclass
-from gpiozero import LED
 
 import cv2
 import numpy as np
@@ -17,11 +16,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from common.camera_utils import letterbox_img, init_rpicam2
+from camera_utils import letterbox_img, init_rpicam2
 from face_detection import scrfd_detection as scrfd
 from goggle_detection import goggle_detection as goggles
 from goggle_detection.goggle_post_process import draw_detections, extract_detections
 from goggle_state import GoggleState, GoggleStateTracker, WearState, score_frame
+from led_display import LEDDisplay
 
 CAMERA_WIDTH = 1920
 CAMERA_HEIGHT = 1080
@@ -49,7 +49,7 @@ class GoggleOutput:
     face_detections: Track ID mapped to (face crop, extract_detections output)
     """
     timestamp: float
-    face_detections: dict[int, tuple[np.ndarray, dict]]
+    detections: dict[int, tuple[np.ndarray, dict]]
 
 
 def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
@@ -95,17 +95,17 @@ def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
         for track_id, face in faces_by_id.items():
             goggle_input_queue.put(((track_id, face), letterbox_img(face, size=size)))
 
-        face_detections = {}
-        while len(face_detections) < len(faces_by_id) and not stop_event.is_set():
+        detections = {}
+        while len(detections) < len(faces_by_id) and not stop_event.is_set():
             try:
                 (track_id, face), raw_inference = goggle_output_queue.get(timeout=QUEUE_TIMEOUT_S)
             except queue.Empty:
                 continue
-            face_detections[track_id] = (
+            detections[track_id] = (
                 face, extract_detections(face, raw_inference, score_threshold, max_boxes)
             )
 
-        output_queue.put(GoggleOutput(timestamp=timestamp, face_detections=face_detections))
+        output_queue.put(GoggleOutput(timestamp=timestamp, detections=detections))
 
 
 def render_face_grid(face_detections: dict[int, tuple[np.ndarray, dict]],
@@ -170,12 +170,13 @@ def render_face_grid(face_detections: dict[int, tuple[np.ndarray, dict]],
 def main() -> None:
     """Runs the SCRFD pipeline followed by the goggles model, and displays the faces."""
     camera = init_rpicam2(CAMERA_WIDTH, CAMERA_HEIGHT)
+    led_display = LEDDisplay()
     assert camera is not None, "Failed to open the Raspberry Pi camera."
+    led_display.begin()
 
-    red_led = LED(24)
-    green_led = LED(23)
-
-    labels = goggles.get_labels(str(goggles.DEFAULT_LABELS_PATH))
+    labels = []
+    with open(config.GOGGLE_LABELS_PATH, "r", encoding="utf-8") as f:
+        labels = f.read().splitlines()
 
     goggle_hef = HEF(str(config.GOGGLE_DETECT_HEF_PATH))
     model_input_height, model_input_width, _ = goggle_hef.get_input_vstream_infos()[0].shape
@@ -240,6 +241,7 @@ def main() -> None:
                         for track_id, (_, detections) in latest.face_detections.items()
                     },
                 )
+                led_display.set_state(state_tracker.aggregate_state())
 
             if latest is not None:
                 cv2.imshow(WINDOW_NAME, render_face_grid(

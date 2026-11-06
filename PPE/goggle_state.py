@@ -84,6 +84,15 @@ class GoggleStateTracker:
         self.off_threshold = off_threshold
         self.states: dict[int, GoggleState] = {}
 
+    def aggregate_state(self):
+        aggregate_state = WearState.UNKNOWN
+        for state in self.states.values():
+            if aggregate_state == WearState.UNKNOWN and state == WearState.WEARING:
+                aggregate_state = WearState.WEARING
+            elif aggregate_state != WearState.NOT_WEARING and state == WearState.NOT_WEARING:
+                aggregate_state = WearState.NOT_WEARING
+        return aggregate_state
+
     def update(self, timestamp: float, scores_by_id: dict[int, float]) -> None:
         """
         Adds one frame of observations and updates every track's state.

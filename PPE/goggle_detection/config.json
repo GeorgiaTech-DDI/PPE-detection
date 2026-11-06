@@ -1,6 +1,0 @@
-{
-  "visualization_params": {
-    "score_thres": 0.4,
-    "max_boxes_to_draw": 500
-  }
-}

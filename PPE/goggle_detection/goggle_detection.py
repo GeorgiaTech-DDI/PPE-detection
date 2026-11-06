@@ -2,7 +2,6 @@
 import json
 import logging
 import queue
-import sys
 import threading
 from pathlib import Path
 
@@ -14,10 +13,6 @@ from hailo_platform import (
     VDevice,
 )
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-
-DEFAULT_LABELS_PATH = SCRIPT_DIR / "goggle_labels.txt"
-DEFAULT_CONFIG_PATH = SCRIPT_DIR / "config.json"
 TIMEOUT_MS = 10000
 
 logger = logging.getLogger("goggle_detection")
@@ -25,13 +20,6 @@ logger = logging.getLogger("goggle_detection")
 def load_json_file(path: Path) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
-
-
-def get_labels(labels_path) -> list:
-    """Loads class labels, one per line."""
-    path = Path(labels_path) if labels_path else DEFAULT_LABELS_PATH
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read().splitlines()
 
 
 def _copy_inference_result(raw):

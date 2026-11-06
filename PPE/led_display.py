@@ -1,5 +1,8 @@
 import time
-from typing import Tuple
+import config
+from typing import Tuple, Literal
+
+from PPE.goggle_state import WearState
 
 try:
     from rpi_ws281x import PixelStrip, Color
@@ -20,43 +23,17 @@ class LEDDisplay:
     """
 
     DEFAULT_COLORS = {
-        "off": (0, 0, 0),
-        "safe": (0, 255, 0),       # green
-        "unsafe": (255, 0, 0),     # red
-        "idle": (0, 0, 40),        # dim blue
-        "warning": (255, 120, 0),  # orange
+        WearState.UNKNOWN: (0, 0, 0),
+        WearState.WEARING: (0, 255, 0),       # green
+        WearState.NOT_WEARING: (255, 0, 0),     # red
     }
 
-    def __init__(
-        self,
-        width: int = 32,
-        height: int = 8,
-        pin: int = 18,
-        brightness: int = 80,
-        freq_hz: int = 800000,
-        dma: int = 10,
-        invert: bool = False,
-        channel: int = 0,
-        pixel_order: str = "GRB",
-        simulate: bool = False,
-    ):
-        self.width = width
-        self.height = height
-        self.num_pixels = width * height
-        self.pin = pin
-        self.brightness = brightness
-        self.freq_hz = freq_hz
-        self.dma = dma
-        self.invert = invert
-        self.channel = channel
-        self.pixel_order = pixel_order
-        self.simulate = simulate
-
+    def __init__(self):
         self.strip = None
-        self.current_state = None
+        self.current_state = WearState.UNKNOWN
 
     def begin(self):
-        if self.simulate:
+        if config.LED_SIMULATE:
             print("[LED] Simulation mode enabled")
             return
 
@@ -66,13 +43,13 @@ class LEDDisplay:
             )
 
         self.strip = PixelStrip(
-            self.num_pixels,
-            self.pin,
-            self.freq_hz,
-            self.dma,
-            self.invert,
-            self.brightness,
-            self.channel,
+            config.LED_WIDTH * config.LED_HEIGHT,
+            config.LED_PIN,
+            config.LED_FREQUENCY_HZ,
+            config.LED_DMA,
+            config.LED_INVERT,
+            config.LED_BRIGHTNESS,
+            config.LED_CHANNEL,
         )
         self.strip.begin()
         self.clear()
@@ -82,7 +59,7 @@ class LEDDisplay:
         if Color is None:
             return (r, g, b)
         # Most WS2812 setups on Pi use GRB order in practice.
-        if self.pixel_order.upper() == "GRB":
+        if config.LED_PIXEL_ORDER.upper() == "GRB":
             return Color(g, r, b)
         return Color(r, g, b)
 
@@ -92,26 +69,26 @@ class LEDDisplay:
         Change this if your panel wiring is different.
         """
         if y % 2 == 0:
-            return y * self.width + x
-        return y * self.width + (self.width - 1 - x)
+            return y * config.LED_WIDTH + x
+        return y * config.LED_WIDTH + (config.LED_WIDTH - 1 - x)
 
     def set_pixel(self, x: int, y: int, rgb: Tuple[int, int, int]):
-        if not (0 <= x < self.width and 0 <= y < self.height):
+        if not (0 <= x < config.LED_WIDTH and 0 <= y < config.LED_HEIGHT):
             return
 
         idx = self.xy_to_index(x, y)
-        if self.simulate:
+        if config.LED_SIMULATE:
             return
 
         self.strip.setPixelColor(idx, self._color(rgb))
 
     def fill(self, rgb: Tuple[int, int, int]):
-        if self.simulate:
+        if config.LED_SIMULATE:
             print(f"[LED] fill -> {rgb}")
             return
 
         color = self._color(rgb)
-        for i in range(self.num_pixels):
+        for i in range(config.LED_WIDTH * config.LED_HEIGHT):
             self.strip.setPixelColor(i, color)
         self.strip.show()
 
@@ -119,7 +96,7 @@ class LEDDisplay:
         self.fill((0, 0, 0))
         self.current_state = "off"
 
-    def set_state(self, state: str):
+    def set_state(self, state: WearState):
         """
         Set a named state color.
         Avoids re-sending the same color repeatedly.

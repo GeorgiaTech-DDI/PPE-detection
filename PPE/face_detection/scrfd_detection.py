@@ -6,7 +6,7 @@ from typing import Optional
 
 from hailo_platform import VDevice, FormatType, ConfigureParams, HailoSchedulingAlgorithm
 
-from common.camera_utils import letterbox_img
+from PPE.camera_utils import letterbox_img
 from .scrfd_postproc import *
 
 TIMEOUT_MS = 1000
