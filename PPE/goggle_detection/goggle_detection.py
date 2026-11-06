@@ -5,6 +5,7 @@ import logging
 import queue
 import threading
 from pathlib import Path
+from hailo_bindings_queue import HailoBindingsQueue
 
 import numpy as np
 from hailo_platform import (
@@ -15,8 +16,6 @@ from hailo_platform import (
 )
 
 TIMEOUT_MS = 10000
-
-available_bindings = queue.Queue(maxsize=1)
 
 logger = logging.getLogger("goggle_detection")
 
@@ -58,16 +57,12 @@ def run_inference_pipeline(network: str,
             infer_model.output(name).set_format_type(FormatType.FLOAT32)
 
         with infer_model.configure() as configured_infer_model:
-            bindings = configured_infer_model.create_bindings()
-            buffer_in = np.empty(infer_model.input().shape, dtype=np.uint8)
-            bindings.input().set_buffer(buffer_in)
-            for name in infer_model.output_names:
-                out_info = infer_model.output(name)
-                bindings.output(name).set_buffer(
-                    np.empty(out_info.shape, dtype=np.float32)
-                )
 
-            available_bindings.put(bindings)
+            available_bindings = HailoBindingsQueue(
+                infer_model,
+                configured_infer_model,
+                4,
+            )
 
             while not stop_event.is_set():
                 try:
@@ -81,6 +76,7 @@ def run_inference_pipeline(network: str,
                 configured_infer_model.run_async([_bindings], partial(
                     goggle_pipeline_callback,
                     bindings=_bindings,
+                    bindings_queue=available_bindings,
                     original_frame=original_frame,
                     infer_model=infer_model,
                     output_queue=output_queue
@@ -88,7 +84,13 @@ def run_inference_pipeline(network: str,
 
                 
 
-def goggle_pipeline_callback(completion_info, bindings, original_frame, infer_model, output_queue):
+def goggle_pipeline_callback(
+        completion_info, 
+        bindings, 
+        bindings_queue,
+        original_frame, 
+        infer_model, 
+        output_queue):
     if len(infer_model.output_names) == 1:
         buffer = bindings.output().get_buffer()
         result = _copy_inference_result(buffer)
@@ -101,4 +103,4 @@ def goggle_pipeline_callback(completion_info, bindings, original_frame, infer_mo
             for name in infer_model.output_names
         }
     output_queue.put((original_frame, result))
-    available_bindings.put(bindings)
+    bindings_queue.put(bindings)

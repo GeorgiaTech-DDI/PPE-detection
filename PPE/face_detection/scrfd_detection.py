@@ -9,6 +9,7 @@ import config
 from hailo_platform import VDevice, FormatType, HailoSchedulingAlgorithm
 
 from camera_utils import letterbox_img
+from hailo_bindings_queue import HailoBindingsQueue
 from .scrfd_postproc import *
 
 # ByteTrack configuration. The activation threshold is deliberately aligned with the
@@ -19,10 +20,6 @@ LOST_TRACK_BUFFER = 30
 MINIMUM_MATCHING_THRESHOLD = 0.8
 FRAME_RATE = 30
 MINIMUM_CONSECUTIVE_FRAMES = 1
-
-# Bindings objects available or in-flight.
-# If none available, then a frame should wait for it to be available.
-bindings_available = queue.Queue(maxsize=1)
 
 # Types
 @dataclass
@@ -160,13 +157,12 @@ def run_inference_pipeline(
             infer_model.output(name).set_format_type(FormatType.FLOAT32)
 
         with infer_model.configure() as configured_infer_model:
-            bindings = configured_infer_model.create_bindings()
-            buffer_in = np.empty(infer_model.input().shape, dtype=np.uint8)
-            bindings.input().set_buffer(buffer_in)
-            bindings_available.put(bindings)
-            for name in infer_model.output_names:
-                out_info = infer_model.output(name)
-                bindings.output(name).set_buffer(np.empty(out_info.shape, dtype=np.float32))
+
+            available_bindings = HailoBindingsQueue(
+                infer_model,
+                configured_infer_model,
+                4
+            )
 
             # Spin the thread (Wheeeeeeee!)
             while not stop_event.is_set():
@@ -176,19 +172,27 @@ def run_inference_pipeline(
                     continue
 
                 # Inference
-                _bindings = bindings_available.get()
+                _bindings = available_bindings.get()
                 _bindings.input().get_buffer()[:] = frame.lores_frame
                 configured_infer_model.run_async(
                     [_bindings],
                     partial(scrfd_callback, 
                             frame=frame, 
                             bindings=_bindings, 
+                            available_bindings_queue=available_bindings,
                             infer_model=infer_model, 
                             tracker=bytetracker,
                             output_queue=output_queue))
         
 
-def scrfd_callback(completion_info, bindings, frame, infer_model, tracker: sv.ByteTrack, output_queue):
+def scrfd_callback(
+        completion_info, 
+        bindings, 
+        available_bindings_queue,
+        frame, 
+        infer_model, 
+        tracker: sv.ByteTrack, 
+        output_queue):
     """
     Callback for SCRFD asynchronous inference.
     Postprocesses, crops and tracks faces from SCRFD inference.
@@ -216,4 +220,4 @@ def scrfd_callback(completion_info, bindings, frame, infer_model, tracker: sv.By
         None
     )
     output_queue.put(output)
-    bindings_available.put(bindings)
+    available_bindings_queue.put(bindings)
