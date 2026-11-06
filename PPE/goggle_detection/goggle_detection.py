@@ -15,6 +15,8 @@ from hailo_platform import (
 
 TIMEOUT_MS = 10000
 
+available_bindings = queue.Queue(maxsize=1)
+
 logger = logging.getLogger("goggle_detection")
 
 def load_json_file(path: Path) -> dict:
@@ -64,6 +66,8 @@ def run_inference_pipeline(network: str,
                     np.empty(out_info.shape, dtype=np.float32)
                 )
 
+            available_bindings.put(bindings)
+
             while not stop_event.is_set():
                 try:
                     frame = input_queue.get(timeout=0.5)  # blocks, times out to check stop_event
@@ -71,18 +75,22 @@ def run_inference_pipeline(network: str,
                     continue
 
                 original_frame, preprocessed_frame = frame
-                buffer_in[:] = preprocessed_frame
-                configured_infer_model.run([bindings], timeout=TIMEOUT_MS)
+                _bindings = available_bindings.get()
+                _bindings.input().get_buffer()[:] = preprocessed_frame
+                configured_infer_model.run_async([_bindings], timeout=TIMEOUT_MS)
 
-                if len(infer_model.output_names) == 1:
-                    buffer = bindings.output().get_buffer()
-                    result = _copy_inference_result(buffer)
-                else:
-                    result = {
-                        name: np.expand_dims(
-                            _copy_inference_result(bindings.output(name).get_buffer()),
-                            axis=0
-                        )
-                        for name in infer_model.output_names
-                    }
-                output_queue.put((original_frame, result))
+                
+
+def goggle_pipeline_callback(completion_info, bindings, original_frame, infer_model, output_queue):
+    if len(infer_model.output_names) == 1:
+        buffer = bindings.output().get_buffer()
+        result = _copy_inference_result(buffer)
+    else:
+        result = {
+            name: np.expand_dims(
+                _copy_inference_result(bindings.output(name).get_buffer()),
+                axis=0
+            )
+            for name in infer_model.output_names
+        }
+    output_queue.put((original_frame, result))
