@@ -42,7 +42,7 @@ STATE_COLORS = {
 }
 
 @dataclass
-class GoggleOutput:
+class GoggleDetections:
     """
     Goggle detections for every tracked face in one frame.
     timestamp: time.monotonic() when the frame reached the goggle pipeline
@@ -52,10 +52,10 @@ class GoggleOutput:
     detections: dict[int, tuple[np.ndarray, dict]]
 
 
-def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
-                        goggle_input_queue: queue.Queue,
-                        goggle_output_queue: queue.Queue,
-                        output_queue: queue.Queue[GoggleOutput],
+def run_goggle_pipeline(input_queue: queue.Queue[scrfd.ScrfdOutput],
+                        goggle_input_queue: queue.Queue[goggles.GoggleInput],
+                        goggle_output_queue: queue.Queue[goggles.GoggleOutput],
+                        output_queue: queue.Queue[GoggleDetections],
                         size: int,
                         score_threshold: float,
                         max_boxes: int,
@@ -65,11 +65,12 @@ def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
 
     Crops are letterboxed to the model input size and pushed through
     goggle_detection.run_inference_pipeline (which owns the Hailo device). Each result
-    comes back paired with the track ID and crop it was computed from, so no matching
-    by index is needed.
+    comes back tagged with the track ID it was computed from, so no matching by index
+    is needed. The crops themselves stay in this thread rather than crossing the
+    inference queues, which already carry the letterboxed copy.
 
     Params:
-        input_queue: Queue of postprocess outputs from SCRFD, each containing "faces_by_id".
+        input_queue: Queue of tracked face crops, keyed by track ID, one dict per frame.
         goggle_input_queue: Queue consumed by goggle_detection.run_inference_pipeline.
         goggle_output_queue: Queue produced by goggle_detection.run_inference_pipeline.
         output_queue: Queue of GoggleOutput, one per SCRFD frame (including frames
@@ -86,26 +87,27 @@ def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
 
         # goggle_detection feeds camera frames to the model without a colour
         # conversion, so the crops are passed through the same way. It hands the
-        # first tuple element back untouched, so it carries the track ID along.
+        # track ID back untouched, so results pair up without matching by index.
         faces_by_id = {
             track_id: face
-            for track_id, face in (input.faces_by_id or {}).items()
+            for track_id, face in (input or {}).items()
             if face.size > 0
         }
         for track_id, face in faces_by_id.items():
-            goggle_input_queue.put(((track_id, face), letterbox_img(face, size=size)))
+            goggle_input_queue.put((track_id, letterbox_img(face, size=size)))
 
         detections = {}
         while len(detections) < len(faces_by_id) and not stop_event.is_set():
             try:
-                (track_id, face), raw_inference = goggle_output_queue.get(timeout=QUEUE_TIMEOUT_S)
+                track_id, raw_inference = goggle_output_queue.get(timeout=QUEUE_TIMEOUT_S)
             except queue.Empty:
                 continue
+            face = faces_by_id[track_id]
             detections[track_id] = (
                 face, extract_detections(face, raw_inference, score_threshold, max_boxes)
             )
 
-        output_queue.put(GoggleOutput(timestamp=timestamp, detections=detections))
+        output_queue.put(GoggleDetections(timestamp=timestamp, detections=detections))
 
 
 def render_face_grid(face_detections: dict[int, tuple[np.ndarray, dict]],
@@ -190,7 +192,6 @@ def main() -> None:
 
     input_queue = queue.Queue()
     preprocessed_frames = queue.Queue()
-    inferences = queue.Queue()
     face_outputs = queue.Queue()
     goggle_inputs = queue.Queue()
     goggle_outputs = queue.Queue()

@@ -28,10 +28,14 @@ def _copy_inference_result(raw):
         return [np.array(item) for item in raw]
     return np.array(raw)
 
+LetterboxedImg = np.ndarray
+GoggleInput = tuple[int, LetterboxedImg]
+RawInference = dict[str, np.ndarray]
+GoggleOutput = tuple[int, RawInference]
 
 def run_inference_pipeline(network: str,
-                           input_queue: queue.Queue,
-                           output_queue: queue.Queue,
+                           input_queue: queue.Queue[GoggleInput],
+                           output_queue: queue.Queue[GoggleOutput],
                            stop_event: threading.Event) -> None:
     """
     Spins up a loop that performs inference on any preprocessed frames added to
@@ -39,8 +43,9 @@ def run_inference_pipeline(network: str,
 
     Params:
         network: Neural network (HEF) to perform inference with.
-        input_queue: Queue of (original_frame, preprocessed_frame) tuples.
-        output_queue: Queue of (original_frame, raw_inference) tuples.
+        input_queue: Queue of (track_id, preprocessed_frame) tuples.
+        output_queue: Queue of (track_id, raw_inference) tuples. The caller needs
+            the track ID back to match each result to the face it came from.
         stop_event: Event used to stop this pipeline.
     """
     params = VDevice.create_params()
@@ -70,19 +75,16 @@ def run_inference_pipeline(network: str,
                 except queue.Empty:
                     continue
 
-                original_frame, preprocessed_frame = frame
+                track_id, preprocessed_frame = frame
                 buffer_in[:] = preprocessed_frame
                 configured_infer_model.run([bindings], timeout=TIMEOUT_MS)
 
-                if len(infer_model.output_names) == 1:
-                    buffer = bindings.output().get_buffer()
-                    result = _copy_inference_result(buffer)
-                else:
-                    result = {
-                        name: np.expand_dims(
-                            _copy_inference_result(bindings.output(name).get_buffer()),
-                            axis=0
-                        )
-                        for name in infer_model.output_names
-                    }
-                output_queue.put((original_frame, result))
+                # TODO check if this logic is ok
+                result = {
+                    name: np.expand_dims(
+                        _copy_inference_result(bindings.output(name).get_buffer()),
+                        axis=0
+                    )
+                    for name in infer_model.output_names
+                }
+                output_queue.put((track_id, result))

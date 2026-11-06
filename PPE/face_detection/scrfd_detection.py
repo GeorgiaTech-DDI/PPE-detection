@@ -22,22 +22,19 @@ FRAME_RATE = 30
 MINIMUM_CONSECUTIVE_FRAMES = 1
 
 # Types
+Face = np.ndarray
+ScrfdOutput = dict[int, Face]
+
 @dataclass
 class PreprocessedFrame:
     hires_frame: np.ndarray
     lores_frame: np.ndarray
 
-@dataclass
-class SCRFDOutput:
-    inferences: PostProcessedSCRFDInference
-    hires_frame: np.ndarray
-    lores_frame: np.ndarray
-    faces: Optional[list[np.ndarray]] = None
-    faces_by_id: Optional[dict[int, np.ndarray]] = None
-
-def track_faces(postprocessed: SCRFDOutput,
+def track_faces(inferences: PostProcessedSCRFDInference,
+                faces: Optional[list[np.ndarray]],
+                lores_frame: np.ndarray,
                 tracker: sv.ByteTrack,
-                include: Optional[list[bool]] = None) -> SCRFDOutput:
+                include: Optional[list[bool]] = None) -> ScrfdOutput:
     """
     Assigns persistent track IDs to the faces detected in a single frame.
 
@@ -45,29 +42,24 @@ def track_faces(postprocessed: SCRFDOutput,
     they are converted back to pixel coordinates before being handed to ByteTrack.
     IoU based association is only meaningful in unnormalized coordinates.
 
-    ByteTrack only reports detections it managed to associate with a track, so
-    faces_by_id contains only crops associated with a track. The faces field remains
-    unchanged. A face missing from one frame may reappear under the same ID if the
-    tracker can re-associate it.
+    ByteTrack only reports detections it managed to associate with a track, so the
+    result contains only crops associated with a track. A face missing from one frame
+    may reappear under the same ID if the tracker can re-associate it.
 
     Params:
-        postprocessed: SCRFDOutput containing the frame's detections, image frames,
-            and face crops.
+        inferences: The frame's SCRFD detections.
+        faces: Face crops, one per detection, in detection order.
+        lores_frame: Preprocessed frame the detection boxes are normalized to.
         tracker: Stateful sv.ByteTrack instance. Reuse it across frames from the
             same stream so track IDs remain consistent.
         include: Optional mask, one entry per detection. Only detections marked True
             are handed to ByteTrack, so excluded faces never get a track ID or appear
-            in faces_by_id. None tracks every detection.
+            in the result. None tracks every detection.
 
     Returns:
-        The same SCRFDOutput instance, with faces_by_id set to a dictionary mapping
-        each ByteTrack ID to its corresponding tracked face crop. The detections,
-        frames, and faces fields are otherwise preserved.
+        Each ByteTrack ID mapped to its corresponding tracked face crop.
     """
-    inferences = postprocessed.inferences
-    faces = postprocessed.faces
-
-    img_h, img_w = postprocessed.lores_frame.shape[:2]
+    img_h, img_w = lores_frame.shape[:2]
     xyxy = np.asarray(inferences.detection_boxes, dtype=np.float32).reshape(-1, 4)
     xyxy = xyxy * np.array([img_w, img_h, img_w, img_h], dtype=np.float32)
     scores = np.asarray(inferences.detection_scores, dtype=np.float32).reshape(-1)
@@ -92,9 +84,8 @@ def track_faces(postprocessed: SCRFDOutput,
     face_indices = np.asarray(tracked.data.get("face_index", []), dtype=int)
     tracked_faces = [faces[i] for i in face_indices if i < len(faces)]
 
-    postprocessed.faces_by_id = dict(zip(tracker_ids.tolist(), tracked_faces))
+    return dict(zip(tracker_ids.tolist(), tracked_faces))
 
-    return postprocessed
 
 def run_preprocess_pipeline(
     input_queue: queue.Queue[np.ndarray],
@@ -123,14 +114,14 @@ def run_preprocess_pipeline(
 def run_inference_pipeline(
         network: str,
         input_queue: queue.Queue[PreprocessedFrame],
-        output_queue: queue.Queue[SCRFDOutput],
+        output_queue: queue.Queue[dict[int, np.ndarray]],
         stop_event: threading.Event):
     """
     Spins up a loop that performs inference on any images added to the input queue.
     Params:
         network: Neural network to perform inference with.
         input_queue: Queue of camera frames, preprocessed.
-        output_queue: Outputs from the neural network. Queue of SCRFDOutput
+        output_queue: Tracked face crops, keyed by ByteTrack ID, one dict per frame.
         stop_event: Event used to stop this pipeline.
     """
 
@@ -204,14 +195,10 @@ def run_inference_pipeline(
         
                     cropped_faces.append(frame.hires_frame[crop_y1:crop_y2, crop_x1:crop_x2])
 
-                output = SCRFDOutput(
-                    inferences=inferences,
-                    hires_frame=frame.hires_frame,
-                    lores_frame=frame.lores_frame,
-                    faces=cropped_faces,
-                )
                 output = track_faces(
-                    output,
+                    inferences,
+                    cropped_faces,
+                    frame.lores_frame,
                     bytetracker,
                     include=None
                 )
