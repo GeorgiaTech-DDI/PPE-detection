@@ -170,10 +170,10 @@ def render_face_grid(face_detections: dict[int, tuple[np.ndarray, dict]],
 def main() -> None:
     """Runs the SCRFD pipeline followed by the goggles model, and displays the faces."""
     camera = init_rpicam2(CAMERA_WIDTH, CAMERA_HEIGHT)
-    led_display = LEDDisplay()
+    # led_display = LEDDisplay()
     assert camera is not None, "Failed to open the Raspberry Pi camera."
-    if not config.LED_SIMULATE:
-        led_display.begin()
+    # if not config.LED_SIMULATE:
+    #     led_display.begin()
 
     labels = []
     with open(config.GOGGLE_LABELS_PATH, "r", encoding="utf-8") as f:
@@ -242,7 +242,7 @@ def main() -> None:
                         for track_id, (_, detections) in latest.detections.items()
                     },
                 )
-                led_display.set_state(state_tracker.aggregate_state())
+                # led_display.set_state(state_tracker.aggregate_state())
 
             if latest is not None:
                 cv2.imshow(WINDOW_NAME, render_face_grid(
@@ -256,7 +256,7 @@ def main() -> None:
         for thread in threads:
             thread.join(timeout=THREAD_JOIN_TIMEOUT_S)
         camera.release()
-        led_display.cleanup()
+        # led_display.cleanup()
         cv2.destroyAllWindows()
 
 
