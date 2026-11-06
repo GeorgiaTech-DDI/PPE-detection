@@ -84,14 +84,14 @@ class GoggleStateTracker:
         self.off_threshold = off_threshold
         self.states: dict[int, GoggleState] = {}
 
-    def aggregate_state(self):
-        aggregate_state = WearState.UNKNOWN
-        for state in self.states.values():
-            if aggregate_state == WearState.UNKNOWN and state == WearState.WEARING:
-                aggregate_state = WearState.WEARING
-            elif aggregate_state != WearState.NOT_WEARING and state == WearState.NOT_WEARING:
-                aggregate_state = WearState.NOT_WEARING
-        return aggregate_state
+    def aggregate_state(self) -> WearState:
+        """Any tracked face without goggles wins, so the panel errs toward red."""
+        states = [goggle_state.state for goggle_state in self.states.values()]
+        if WearState.NOT_WEARING in states:
+            return WearState.NOT_WEARING
+        if WearState.WEARING in states:
+            return WearState.WEARING
+        return WearState.UNKNOWN
 
     def update(self, timestamp: float, scores_by_id: dict[int, float]) -> None:
         """

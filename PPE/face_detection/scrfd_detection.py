@@ -4,9 +4,9 @@ import supervision as sv
 from dataclasses import dataclass
 from typing import Optional
 
-from hailo_platform import VDevice, FormatType, ConfigureParams, HailoSchedulingAlgorithm
+from hailo_platform import VDevice, FormatType, HailoSchedulingAlgorithm
 
-from PPE.camera_utils import letterbox_img
+from camera_utils import letterbox_img
 from .scrfd_postproc import *
 
 TIMEOUT_MS = 1000

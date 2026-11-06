@@ -1,8 +1,8 @@
 import time
 import config
-from typing import Tuple, Literal
+from typing import Tuple
 
-from PPE.goggle_state import WearState
+from goggle_state import WearState
 
 try:
     from rpi_ws281x import PixelStrip, Color
@@ -94,7 +94,7 @@ class LEDDisplay:
 
     def clear(self):
         self.fill((0, 0, 0))
-        self.current_state = "off"
+        self.current_state = WearState.UNKNOWN
 
     def set_state(self, state: WearState):
         """

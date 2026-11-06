@@ -46,7 +46,7 @@ class GoggleOutput:
     """
     Goggle detections for every tracked face in one frame.
     timestamp: time.monotonic() when the frame reached the goggle pipeline
-    face_detections: Track ID mapped to (face crop, extract_detections output)
+    detections: Track ID mapped to (face crop, extract_detections output)
     """
     timestamp: float
     detections: dict[int, tuple[np.ndarray, dict]]
@@ -172,7 +172,8 @@ def main() -> None:
     camera = init_rpicam2(CAMERA_WIDTH, CAMERA_HEIGHT)
     led_display = LEDDisplay()
     assert camera is not None, "Failed to open the Raspberry Pi camera."
-    led_display.begin()
+    if not config.LED_SIMULATE:
+        led_display.begin()
 
     labels = []
     with open(config.GOGGLE_LABELS_PATH, "r", encoding="utf-8") as f:
@@ -238,14 +239,14 @@ def main() -> None:
                     latest.timestamp,
                     {
                         track_id: score_frame(detections, safety_glasses_class)
-                        for track_id, (_, detections) in latest.face_detections.items()
+                        for track_id, (_, detections) in latest.detections.items()
                     },
                 )
                 led_display.set_state(state_tracker.aggregate_state())
 
             if latest is not None:
                 cv2.imshow(WINDOW_NAME, render_face_grid(
-                    latest.face_detections, state_tracker.states, labels
+                    latest.detections, state_tracker.states, labels
                 ))
 
             if (cv2.waitKey(1) & 0xFF) == ord('q'):
@@ -255,6 +256,7 @@ def main() -> None:
         for thread in threads:
             thread.join(timeout=THREAD_JOIN_TIMEOUT_S)
         camera.release()
+        led_display.cleanup()
         cv2.destroyAllWindows()
 
 

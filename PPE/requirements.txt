@@ -130,6 +130,7 @@ roman==5.0
 rpds-py==0.21.0
 rpi-keyboard-config==1.0
 rpi-lgpio==0.6
+rpi_ws281x
 RTIMULib==7.2.1
 scipy==1.18.1
 Send2Trash==1.8.3

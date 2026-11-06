@@ -1,5 +1,3 @@
-from typing import Literal
-
 import cv2
 import numpy as np
 
