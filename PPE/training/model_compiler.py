@@ -36,18 +36,18 @@ This script takes in the following arguments:
 """
 
 def export_hailo_hef(
-    trained_weights,
-    calibration_data,
+    trained_weights_file_path,
+    calibration_data_file_path,
     hailo_target="hailo10h",
     imgsz=640,
 ):
-    if not trained_weights.strip():
+    if not trained_weights_file_path.strip():
         raise ValueError("Enter the path to trained model weights.")
-    if not calibration_data.strip():
+    if not calibration_data_file_path.strip():
         raise ValueError("Enter the path to the calibration dataset data.yaml.")
 
-    best_weights = Path(trained_weights).expanduser()
-    calibration_yaml = Path(calibration_data).expanduser()
+    best_weights = Path(trained_weights_file_path).expanduser()
+    calibration_yaml = Path(calibration_data_file_path).expanduser()
     if not calibration_yaml.is_file():
         raise FileNotFoundError(f"Calibration dataset YAML not found: {calibration_yaml}")
     if not best_weights.is_file():
