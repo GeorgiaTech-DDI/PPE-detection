@@ -24,8 +24,8 @@ source ./.venv/bin/activate
 ```
 pip install -r requirements.txt
 ```
-6. You can run the app with a command such as the one below:
+6. From the repository root, run the app:
 ```
-python3 goggle_detection.py --input rpi --hef-path yolov8s.hef --labels goggle_labels.txt
+python3 PPE/detection.py
 ```
-Replace the arguments with whichever ones you need, and you're good to go!s
+The app takes no command line arguments. Press `q` in the preview window to stop it.

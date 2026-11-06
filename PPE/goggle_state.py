@@ -1,7 +1,6 @@
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 # Observations older than this are dropped from a track's window. Time based rather
 # than frame based, since the frame rate drops as more faces need goggle inference.
@@ -24,21 +23,17 @@ class WearState(Enum):
 class GoggleState:
     """
     Represents the state of a subject for which we are detecting goggles.
-    track_id: ByteTrack ID for the subject
     observations: (timestamp, score) pairs within the last WINDOW_S seconds
     state: Current decision for the subject
     frames_since_last_face: Amount of frames input since last time this subject was seen
     """
-    track_id: int
     observations: deque[tuple[float, float]] = field(default_factory=deque)
     state: WearState = WearState.UNKNOWN
     frames_since_last_face: int = 0
 
     @property
-    def window_score(self) -> Optional[float]:
-        """Mean score over the window, or None if there are no observations."""
-        if not self.observations:
-            return None
+    def window_score(self) -> float:
+        """Mean score over the window. GoggleStateTracker keeps at least one observation."""
         return sum(score for _, score in self.observations) / len(self.observations)
 
 
@@ -89,22 +84,29 @@ class GoggleStateTracker:
         self.off_threshold = off_threshold
         self.states: dict[int, GoggleState] = {}
 
-    def update(self, timestamp: float, scores_by_id: dict[int, float]) -> dict[int, GoggleState]:
+    def aggregate_state(self) -> WearState:
+        """Any tracked face without goggles wins, so the panel errs toward red."""
+        states = [goggle_state.state for goggle_state in self.states.values()]
+        if WearState.NOT_WEARING in states:
+            return WearState.NOT_WEARING
+        if WearState.WEARING in states:
+            return WearState.WEARING
+        return WearState.UNKNOWN
+
+    def update(self, timestamp: float, scores_by_id: dict[int, float]) -> None:
         """
         Adds one frame of observations and updates every track's state.
 
         Params:
             timestamp: Time the frame was observed, in seconds (monotonic).
             scores_by_id: score_frame output for each track seen in this frame.
-        Returns:
-            The current states, keyed by track ID.
         """
         for track_id, goggle_state in self.states.items():
             if track_id not in scores_by_id:
                 goggle_state.frames_since_last_face += 1
 
         for track_id, score in scores_by_id.items():
-            goggle_state = self.states.setdefault(track_id, GoggleState(track_id=track_id))
+            goggle_state = self.states.setdefault(track_id, GoggleState())
             goggle_state.frames_since_last_face = 0
             goggle_state.observations.append((timestamp, score))
             self._update_state(goggle_state, timestamp)
@@ -114,11 +116,10 @@ class GoggleStateTracker:
             for track_id, goggle_state in self.states.items()
             if goggle_state.frames_since_last_face <= self.evict_after_frames
         }
-        return self.states
 
     def _update_state(self, goggle_state: GoggleState, timestamp: float) -> None:
         """Drops stale observations and applies hysteresis to the window score."""
-        while goggle_state.observations and timestamp - goggle_state.observations[0][0] > self.window_s:
+        while timestamp - goggle_state.observations[0][0] > self.window_s:
             goggle_state.observations.popleft()
 
         # Too little evidence keeps the current state, which is UNKNOWN for new tracks.

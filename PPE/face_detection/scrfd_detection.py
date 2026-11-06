@@ -4,21 +4,14 @@ import supervision as sv
 from dataclasses import dataclass
 from typing import Optional
 
-from hailo_platform import VDevice, FormatType, ConfigureParams, HailoSchedulingAlgorithm
+from hailo_platform import VDevice, FormatType, HailoSchedulingAlgorithm
 
-from common.utils import letterbox_img
-from scrfd_postproc import *
+from camera_utils import letterbox_img
+from .scrfd_postproc import *
 
 TIMEOUT_MS = 1000
 CROP_BUFFER = 20
 
-# Distance Estimation configuration. Height and width numbers are in normalized coordinates.
-# Minimum of -1.5 standard deviation from mean allowed before faces are dropped.
-MEAN_FACE_WIDTH_1M = 0.062864
-MEAN_FACE_HEIGHT_1M = 0.077907
-STDEV_FACE_WIDTH_1M = 0.007918
-STDEV_FACE_HEIGHT_1M = 0.014038
-MIN_Z_SCORE = -1.5
 # ByteTrack configuration. The activation threshold is deliberately aligned with the
 # SCRFD postprocessing score threshold so that every face we detect is eligible to
 # start a track instead of being dropped by the tracker on its first frame.
@@ -131,8 +124,7 @@ def run_inference_pipeline(
         network: str,
         input_queue: queue.Queue[PreprocessedFrame],
         output_queue: queue.Queue[SCRFDOutput],
-        stop_event: threading.Event,
-        track_only_within_1m: bool = False):
+        stop_event: threading.Event):
     """
     Spins up a loop that performs inference on any images added to the input queue.
     Params:
@@ -140,8 +132,6 @@ def run_inference_pipeline(
         input_queue: Queue of camera frames, preprocessed.
         output_queue: Outputs from the neural network. Queue of SCRFDOutput
         stop_event: Event used to stop this pipeline.
-        track_only_within_1m: If True, only faces estimated to be within 1m are given
-            to ByteTrack, so faces_by_id only contains faces within 1m.
     """
 
     # Setup VDevice to be shared across frames with Round Robin scheuler
@@ -196,25 +186,16 @@ def run_inference_pipeline(
                 img_h, img_w = frame.hires_frame.shape[:2]
                 crop_buffer = round(CROP_BUFFER * img_w / 640)
                 cropped_faces = []
-                inferences.within_1m = []
                 for (x_min, y_min, x_max, y_max) in inferences.detection_boxes:
                     # Find normalized width and height, compare to mean
                     width = x_max - x_min
                     height = y_max - y_min
-        
-                    width_z_score = (width - MEAN_FACE_WIDTH_1M) / STDEV_FACE_WIDTH_1M
-                    height_z_score = (height - MEAN_FACE_HEIGHT_1M) / STDEV_FACE_HEIGHT_1M
-        
-                    inferences.within_1m.append(True if width_z_score > MIN_Z_SCORE or height_z_score > MIN_Z_SCORE else False)
         
                     # Convert normalized coords to pixel coords
                     px_min = x_min * img_w
                     px_max = x_max * img_w
                     py_min = y_min * img_h
                     py_max = y_max * img_h
-        
-                    width = px_max - px_min
-                    height = py_max - py_min
         
                     crop_x1 = max(0, int(px_min - crop_buffer))
                     crop_y1 = max(0, int(py_min - crop_buffer))
@@ -232,7 +213,7 @@ def run_inference_pipeline(
                 output = track_faces(
                     output,
                     bytetracker,
-                    include=inferences.within_1m if track_only_within_1m else None,
+                    include=None
                 )
 
                 output_queue.put(output)
