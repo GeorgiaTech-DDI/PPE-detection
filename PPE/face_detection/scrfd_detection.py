@@ -151,7 +151,7 @@ def run_inference_pipeline(
 
     with VDevice(params) as vdevice:
         infer_model = vdevice.create_infer_model(network)
-        infer_model.set_batch_size(4)
+        infer_model.set_batch_size(config.BATCH_SIZE)
         infer_model.input().set_format_type(FormatType.UINT8)
 
         for name in infer_model.output_names:
@@ -162,7 +162,7 @@ def run_inference_pipeline(
             available_bindings = HailoBindingsQueue(
                 infer_model,
                 configured_infer_model,
-                4
+                config.BATCH_SIZE
             )
 
             # Spin the thread (Wheeeeeeee!)
