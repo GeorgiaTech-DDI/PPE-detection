@@ -6,6 +6,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+# Hailo Inference Parameters
+BATCH_SIZE = 10
+
 CROP_BUFFER = 20
 TIMEOUT_MS = 1000
 
