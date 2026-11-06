@@ -8,3 +8,6 @@
 !.env.example
 training_runs/
 runs/
+**__pycache__/
+**captures/
+**PPE_Detection.egg-info/
