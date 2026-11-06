@@ -194,8 +194,6 @@ def scrfd_callback(completion_info, bindings, frame, infer_model, tracker: sv.By
     Postprocesses, crops and tracks faces from SCRFD inference.
     
     """
-    if completion_info.exception:
-        exit(1)
     postproc = SCRFDPostProc((640, 640))
 
     endnodes = [
