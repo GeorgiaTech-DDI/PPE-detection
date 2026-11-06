@@ -142,7 +142,7 @@ class SCRFDPostProc:
 
         return results
 
-    def crop_faces(
+    def crop_faces(self,
             inferences: PostProcessedSCRFDInference,
             frame: np.ndarray) -> list[np.ndarray]:
         # Set up variables for postprocess cropping
