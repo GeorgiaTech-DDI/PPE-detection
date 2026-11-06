@@ -6,6 +6,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+CROP_BUFFER = 20
+TIMEOUT_MS = 1000
+
 GOGGLE_LABELS_PATH = SCRIPT_DIR / "labels" / "goggles.txt"
 FACE_DETECT_HEF_PATH = SCRIPT_DIR / "models" / "scrfd_500m.hef"
 GOGGLE_DETECT_HEF_PATH = SCRIPT_DIR / "models" / "goggles_hybrid_dataset.hef"
