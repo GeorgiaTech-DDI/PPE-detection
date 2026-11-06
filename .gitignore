@@ -5,3 +5,4 @@
 .idea/
 **__pycache__/
 **captures/
+**PPE_Detection.egg-info/
