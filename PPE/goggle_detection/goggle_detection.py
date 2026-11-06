@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from functools import partial
 import json
 import logging
 import queue
@@ -77,7 +78,13 @@ def run_inference_pipeline(network: str,
                 original_frame, preprocessed_frame = frame
                 _bindings = available_bindings.get()
                 _bindings.input().get_buffer()[:] = preprocessed_frame
-                configured_infer_model.run_async([_bindings], timeout=TIMEOUT_MS)
+                configured_infer_model.run_async([_bindings], partial(
+                    goggle_pipeline_callback,
+                    bindings=_bindings,
+                    original_frame=original_frame,
+                    infer_model=infer_model,
+                    output_queue=output_queue
+                ))
 
                 
 
@@ -94,3 +101,4 @@ def goggle_pipeline_callback(completion_info, bindings, original_frame, infer_mo
             for name in infer_model.output_names
         }
     output_queue.put((original_frame, result))
+    available_bindings.put(bindings)
