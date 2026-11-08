@@ -200,14 +200,10 @@ def scrfd_callback(
                 ]
     inferences = postproc.postprocess(endnodes)
     cropped_faces = postproc.crop_faces(inferences, frame.hires_frame)
-    output = SCRFDOutput(
-        inferences=inferences,
-        hires_frame=frame.hires_frame,
-        lores_frame=frame.lores_frame,
-        faces=cropped_faces,
-    )
     output = track_faces(
-        output,
+        inferences,
+        cropped_faces,
+        frame.lores_frame,
         tracker,
         None
     )
