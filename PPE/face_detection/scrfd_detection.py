@@ -1,16 +1,16 @@
+from functools import partial
 import queue
 import threading
 import supervision as sv
 from dataclasses import dataclass
 from typing import Optional
+import config
 
 from hailo_platform import VDevice, FormatType, HailoSchedulingAlgorithm
 
 from camera_utils import letterbox_img
+from hailo_bindings_queue import HailoBindingsQueue
 from .scrfd_postproc import *
-
-TIMEOUT_MS = 1000
-CROP_BUFFER = 20
 
 # ByteTrack configuration. The activation threshold is deliberately aligned with the
 # SCRFD postprocessing score threshold so that every face we detect is eligible to
@@ -142,18 +142,19 @@ def run_inference_pipeline(
 
     with VDevice(params) as vdevice:
         infer_model = vdevice.create_infer_model(network)
+        infer_model.set_batch_size(config.BATCH_SIZE)
         infer_model.input().set_format_type(FormatType.UINT8)
 
         for name in infer_model.output_names:
             infer_model.output(name).set_format_type(FormatType.FLOAT32)
 
         with infer_model.configure() as configured_infer_model:
-            bindings = configured_infer_model.create_bindings()
-            buffer_in = np.empty(infer_model.input().shape, dtype=np.uint8)
-            bindings.input().set_buffer(buffer_in)
-            for name in infer_model.output_names:
-                out_info = infer_model.output(name)
-                bindings.output(name).set_buffer(np.empty(out_info.shape, dtype=np.float32))
+
+            available_bindings = HailoBindingsQueue(
+                infer_model,
+                configured_infer_model,
+                config.BATCH_SIZE
+            )
 
             # Spin the thread (Wheeeeeeee!)
             while not stop_event.is_set():
@@ -163,44 +164,52 @@ def run_inference_pipeline(
                     continue
 
                 # Inference
-                buffer_in[:] = frame.lores_frame
-                configured_infer_model.run([bindings], timeout=TIMEOUT_MS)
-
-                # Run postprocessing
-                inferences = postproc.postprocess(
-                    [
-                        bindings.output(name).get_buffer().copy()
-                        for name in infer_model.output_names
-                    ]
-                )
-                # Set up variables for postprocess cropping
-                img_h, img_w = frame.hires_frame.shape[:2]
-                crop_buffer = round(CROP_BUFFER * img_w / 640)
-                cropped_faces = []
-                for (x_min, y_min, x_max, y_max) in inferences.detection_boxes:
-                    # Find normalized width and height, compare to mean
-                    width = x_max - x_min
-                    height = y_max - y_min
+                _bindings = available_bindings.get()
+                _bindings.input().get_buffer()[:] = frame.lores_frame
+                configured_infer_model.run_async(
+                    [_bindings],
+                    partial(scrfd_callback, 
+                            frame=frame, 
+                            bindings=_bindings, 
+                            available_bindings_queue=available_bindings,
+                            infer_model=infer_model, 
+                            tracker=bytetracker,
+                            output_queue=output_queue))
         
-                    # Convert normalized coords to pixel coords
-                    px_min = x_min * img_w
-                    px_max = x_max * img_w
-                    py_min = y_min * img_h
-                    py_max = y_max * img_h
-        
-                    crop_x1 = max(0, int(px_min - crop_buffer))
-                    crop_y1 = max(0, int(py_min - crop_buffer))
-                    crop_x2 = min(img_w, int(px_max + crop_buffer))
-                    crop_y2 = min(img_h, int(py_max + crop_buffer))
-        
-                    cropped_faces.append(frame.hires_frame[crop_y1:crop_y2, crop_x1:crop_x2])
 
-                output = track_faces(
-                    inferences,
-                    cropped_faces,
-                    frame.lores_frame,
-                    bytetracker,
-                    include=None
-                )
+def scrfd_callback(
+        completion_info, 
+        bindings, 
+        available_bindings_queue,
+        frame, 
+        infer_model, 
+        tracker: sv.ByteTrack, 
+        output_queue):
+    """
+    Callback for SCRFD asynchronous inference.
+    Postprocesses, crops and tracks faces from SCRFD inference.
+    
+    """
+    if completion_info.exception:
+        exit(1)
+    postproc = SCRFDPostProc((640, 640))
 
-                output_queue.put(output)
+    endnodes = [
+                    bindings.output(name).get_buffer().copy()
+                    for name in infer_model.output_names
+                ]
+    inferences = postproc.postprocess(endnodes)
+    cropped_faces = postproc.crop_faces(inferences, frame.hires_frame)
+    output = SCRFDOutput(
+        inferences=inferences,
+        hires_frame=frame.hires_frame,
+        lores_frame=frame.lores_frame,
+        faces=cropped_faces,
+    )
+    output = track_faces(
+        output,
+        tracker,
+        None
+    )
+    output_queue.put(output)
+    available_bindings_queue.put(bindings)
