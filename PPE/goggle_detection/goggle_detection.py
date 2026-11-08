@@ -22,11 +22,28 @@ def load_json_file(path: Path) -> dict:
         return json.load(f)
 
 
-def _copy_inference_result(raw):
-    """Copies buffers, since the bindings reuse them across frames."""
-    if isinstance(raw, (list, tuple)):
-        return [np.array(item) for item in raw]
-    return np.array(raw)
+def _copy_inference_result(raw) -> np.ndarray:
+    """Copies buffers, since the bindings reuse them across frames.
+
+    NMS outputs arrive as one array per class and the classes hold different
+    numbers of detections, so the per-class arrays are padded up to a common
+    length before stacking them into a dense [class, detection, 5] array. The
+    padding is zeros, so its score is below any score threshold.
+    """
+    if not isinstance(raw, (list, tuple)):
+        return np.array(raw)
+
+    arrays = [np.asarray(item) for item in raw]
+    if not arrays:
+        return np.array(raw, dtype=np.float32)
+    if len({array.shape for array in arrays}) == 1:
+        return np.stack(arrays)
+
+    max_detections = max(array.shape[0] for array in arrays)
+    return np.stack([
+        np.pad(array, ((0, max_detections - array.shape[0]), *((0, 0),) * (array.ndim - 1)))
+        for array in arrays
+    ])
 
 LetterboxedImg = np.ndarray
 GoggleInput = tuple[int, LetterboxedImg]
