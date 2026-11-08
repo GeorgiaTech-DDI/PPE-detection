@@ -232,7 +232,10 @@ def main() -> None:
         while True:
             ok, frame = camera.read()
             if ok:
-                input_queue.put(frame)
+                try:
+                    input_queue.put_nowait(frame)
+                except queue.Full:
+                    continue
 
             # Drain the queue so we always display the most recent result. Every output
             # still goes through the state tracker so no frames are skipped.

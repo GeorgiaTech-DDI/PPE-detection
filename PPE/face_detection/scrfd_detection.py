@@ -104,12 +104,15 @@ def run_preprocess_pipeline(
         except queue.Empty:
             continue
 
-        output_queue.put(
-            PreprocessedFrame(
-                lores_frame=letterbox_img(input, resize_interpolation=cv2.INTER_LINEAR),
-                hires_frame=letterbox_img(input, size=1920, resize_interpolation=cv2.INTER_LINEAR),
+        try:
+            output_queue.put_nowait(
+                PreprocessedFrame(
+                    lores_frame=letterbox_img(input, resize_interpolation=cv2.INTER_LINEAR),
+                    hires_frame=letterbox_img(input, size=1920, resize_interpolation=cv2.INTER_LINEAR),
+                )
             )
-        )
+        except queue.Full:
+            continue
 
 def run_inference_pipeline(
         network: str,
