@@ -3,8 +3,6 @@ import numpy as np
 
 from collections import deque
 
-from PPE.goggle_detection.goggle_detection import RawInference
-
 # Dictionary to store a limited history of tracklet coordinates.
 # The keys will be the track IDs.
 tracklet_history = {}
@@ -81,7 +79,7 @@ def denormalize_and_rm_pad(box: list, size: int, padding_length: int, input_heig
     return [box[1], box[0], box[3], box[2]]
 
 
-def extract_detections(image: np.ndarray, detections: RawInference, score_threshold: float, max_boxes: int) -> dict:
+def extract_detections(image: np.ndarray, detections: dict[str, np.ndarray], score_threshold: float, max_boxes: int) -> dict:
     """
     Extract detections from the input data.
 
