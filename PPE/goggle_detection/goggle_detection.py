@@ -106,6 +106,8 @@ def run_inference_pipeline(network: str,
                     output_queue=output_queue
                 ))
 
+# queue size limits (50)
+# stop all threads/cleanup when one thread throws
                 
 
 def goggle_pipeline_callback(

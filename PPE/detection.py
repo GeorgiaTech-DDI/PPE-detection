@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import math
 import queue
 import sys
@@ -190,12 +191,12 @@ def main() -> None:
 
     stop_event = threading.Event()
 
-    input_queue = queue.Queue()
-    preprocessed_frames = queue.Queue()
-    face_outputs = queue.Queue()
-    goggle_inputs = queue.Queue()
-    goggle_outputs = queue.Queue()
-    outputs = queue.Queue()
+    input_queue = queue.Queue(50)
+    preprocessed_frames = queue.Queue(50)
+    face_outputs = queue.Queue(50)
+    goggle_inputs = queue.Queue(50)
+    goggle_outputs = queue.Queue(50)
+    outputs = queue.Queue(50)
 
     threads = [
         threading.Thread(
@@ -217,6 +218,11 @@ def main() -> None:
             args=(str(config.GOGGLE_DETECT_HEF_PATH), goggle_inputs, goggle_outputs, stop_event),
         )
     ]
+
+    def thread_error_handler(args):
+        print("An error has been thrown in one of the threads.")
+        os._exit(1)
+    threading.excepthook = thread_error_handler
 
     for thread in threads:
         thread.start()
