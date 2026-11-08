@@ -79,15 +79,12 @@ def run_inference_pipeline(network: str,
                 buffer_in[:] = preprocessed_frame
                 configured_infer_model.run([bindings], timeout=TIMEOUT_MS)
 
-                if len(infer_model.output_names) == 1:
-                    buffer = bindings.output().get_buffer()
-                    result = _copy_inference_result(buffer)
-                else:
-                    result = {
-                        name: np.expand_dims(
-                            _copy_inference_result(bindings.output(name).get_buffer()),
-                            axis=0
-                        )
-                        for name in infer_model.output_names
-                    }
+            
+                result = {
+                    name: np.expand_dims(
+                        _copy_inference_result(bindings.output(name).get_buffer()),
+                        axis=0
+                    )
+                    for name in infer_model.output_names
+                }
                 output_queue.put((track_id, result))
