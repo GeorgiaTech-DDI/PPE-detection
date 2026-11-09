@@ -192,12 +192,12 @@ def main() -> None:
 
     stop_event = threading.Event()
 
-    input_queue = queue.Queue(50)
-    preprocessed_frames = queue.Queue(50)
-    face_outputs = queue.Queue(50)
-    goggle_inputs = queue.Queue(50)
-    goggle_outputs = queue.Queue(50)
-    outputs = queue.Queue(50)
+    input_queue = queue.Queue(config.QUEUE_SIZE)
+    preprocessed_frames = queue.Queue(config.QUEUE_SIZE)
+    face_outputs = queue.Queue(config.QUEUE_SIZE)
+    goggle_inputs = queue.Queue(config.QUEUE_SIZE)
+    goggle_outputs = queue.Queue(config.QUEUE_SIZE)
+    outputs = queue.Queue(config.QUEUE_SIZE)
 
     threads = [
         threading.Thread(
