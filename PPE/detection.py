@@ -188,6 +188,7 @@ def main() -> None:
 
     safety_glasses_class = labels.index(SAFETY_GLASSES_LABEL)
     state_tracker = GoggleStateTracker(evict_after_frames=EVICT_AFTER_FRAMES)
+    num_frames_with_no_faces = 0
 
     stop_event = threading.Event()
 
@@ -236,7 +237,7 @@ def main() -> None:
                     input_queue.put_nowait(frame)
                 except queue.Full:
                     with queue.mutex:
-                        for _ in range(20):
+                        for _ in range(config.FULL_QUEUE_FRAMES_TO_DROP):
                             queue.queue.popleft()
                     continue
 
@@ -263,8 +264,13 @@ def main() -> None:
             
             delay = config.LOOP_PERIOD_SECS
             if num_rounds > 0:
+                num_frames_with_no_faces = 0
                 avg_faces_per_frame = total_num_faces / num_rounds
                 delay += config.BONUS_DELAY_PER_FACE_SECS * avg_faces_per_frame
+            else:
+                num_frames_with_no_faces += 1
+                if num_frames_with_no_faces > config.NO_FACES_FRAME_THRESHOLD:
+                    delay = config.NO_FACES_DELAY
             time.sleep(delay)
 
             if latest is not None:
