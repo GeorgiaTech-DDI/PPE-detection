@@ -235,6 +235,7 @@ def main() -> None:
                 try:
                     input_queue.put_nowait(frame)
                 except queue.Full:
+                    time.sleep(0.1)
                     continue
 
             # Drain the queue so we always display the most recent result. Every output
