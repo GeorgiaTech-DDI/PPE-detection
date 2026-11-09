@@ -235,17 +235,23 @@ def main() -> None:
                 try:
                     input_queue.put_nowait(frame)
                 except queue.Full:
-                    time.sleep(0.1)
+                    with queue.mutex:
+                        for _ in range(20):
+                            queue.queue.popleft()
                     continue
 
             # Drain the queue so we always display the most recent result. Every output
             # still goes through the state tracker so no frames are skipped.
             latest = None
+            total_num_faces = 0
+            num_rounds = 0
             while True:
                 try:
                     latest = outputs.get_nowait()
                 except queue.Empty:
                     break
+                total_num_faces += len(latest.detections)
+                num_rounds += 1
                 state_tracker.update(
                     latest.timestamp,
                     {
@@ -254,6 +260,12 @@ def main() -> None:
                     },
                 )
                 # led_display.set_state(state_tracker.aggregate_state())
+            
+            delay = config.LOOP_PERIOD_SECS
+            if num_rounds > 0:
+                avg_faces_per_frame = total_num_faces / num_rounds
+                delay += config.BONUS_DELAY_PER_FACE_SECS * avg_faces_per_frame
+            time.sleep(delay)
 
             if latest is not None:
                 cv2.imshow(WINDOW_NAME, render_face_grid(

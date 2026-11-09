@@ -7,6 +7,8 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 # Hailo Inference Parameters
+LOOP_PERIOD_SECS = 0.01
+BONUS_DELAY_PER_FACE_SECS = 0.01
 BATCH_SIZE = 10
 
 CROP_BUFFER = 20
