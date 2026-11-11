@@ -5,15 +5,16 @@ from typing import Tuple
 from goggle_state import WearState
 
 try:
-    from rpi_ws281x import PixelStrip, Color
+    import board
+    import neopixel_spi
 except ImportError:
-    PixelStrip = None
-    Color = None
+    board = None
+    neopixel_spi = None
 
 
 class LEDDisplay:
     """
-    Simple RGB LED controller for an addressable 8x32 display or strip.
+    Simple RGB LED controller for a 40-pixel addressable LED strip.
 
     Designed to be easy to expand:
     - set solid status colors
@@ -27,6 +28,7 @@ class LEDDisplay:
         WearState.WEARING: (0, 255, 0),       # green
         WearState.NOT_WEARING: (255, 0, 0),     # red
     }
+    PIXEL_COUNT = 40
 
     def __init__(self):
         self.strip = None
@@ -37,59 +39,38 @@ class LEDDisplay:
             print("[LED] Simulation mode enabled")
             return
 
-        if PixelStrip is None:
+        if board is None or neopixel_spi is None:
             raise ImportError(
-                "rpi_ws281x is not installed. Install it or enable simulate=True."
+                "CircuitPython NeoPixel SPI dependencies are not installed. "
+                "Install adafruit-circuitpython-neopixel-spi and Adafruit Blinka, "
+                "or enable LED_SIMULATE."
             )
 
-        self.strip = PixelStrip(
-            config.LED_WIDTH * config.LED_HEIGHT,
-            config.LED_PIN,
-            config.LED_FREQUENCY_HZ,
-            config.LED_DMA,
-            config.LED_INVERT,
-            config.LED_BRIGHTNESS,
-            config.LED_CHANNEL,
+        self.strip = neopixel_spi.NeoPixel_SPI(
+            board.SPI(),
+            self.PIXEL_COUNT,
+            auto_write=False,
+            brightness=config.LED_BRIGHTNESS / 255,
+            pixel_order=config.LED_PIXEL_ORDER,
         )
-        self.strip.begin()
         self.clear()
 
-    def _color(self, rgb: Tuple[int, int, int]):
-        r, g, b = rgb
-        if Color is None:
-            return (r, g, b)
-        # Most WS2812 setups on Pi use GRB order in practice.
-        if config.LED_PIXEL_ORDER.upper() == "GRB":
-            return Color(g, r, b)
-        return Color(r, g, b)
-
-    def xy_to_index(self, x: int, y: int) -> int:
-        """
-        Serpentine mapping for 8x32 matrix.
-        Change this if your panel wiring is different.
-        """
-        if y % 2 == 0:
-            return y * config.LED_WIDTH + x
-        return y * config.LED_WIDTH + (config.LED_WIDTH - 1 - x)
-
-    def set_pixel(self, x: int, y: int, rgb: Tuple[int, int, int]):
-        if not (0 <= x < config.LED_WIDTH and 0 <= y < config.LED_HEIGHT):
+    def set_pixel(self, index: int, rgb: Tuple[int, int, int]):
+        if not 0 <= index < self.PIXEL_COUNT:
             return
 
-        idx = self.xy_to_index(x, y)
         if config.LED_SIMULATE:
             return
 
-        self.strip.setPixelColor(idx, self._color(rgb))
+        self.strip[index] = rgb
+        self.strip.show()
 
     def fill(self, rgb: Tuple[int, int, int]):
         if config.LED_SIMULATE:
             print(f"[LED] fill -> {rgb}")
             return
 
-        color = self._color(rgb)
-        for i in range(config.LED_WIDTH * config.LED_HEIGHT):
-            self.strip.setPixelColor(i, color)
+        self.strip.fill(rgb)
         self.strip.show()
 
     def clear(self):
@@ -127,4 +108,11 @@ class LEDDisplay:
         self.clear()
 
     def cleanup(self):
-        self.clear()
+        if config.LED_SIMULATE:
+            self.clear()
+            return
+
+        if self.strip is not None:
+            self.strip.deinit()
+            self.strip = None
+        self.current_state = WearState.UNKNOWN
