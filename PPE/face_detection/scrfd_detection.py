@@ -7,7 +7,7 @@ from typing import Optional
 from hailo_platform import VDevice, FormatType, HailoSchedulingAlgorithm
 
 from camera_utils import letterbox_img
-from .scrfd_postproc import *
+from .scrfd_post_process import *
 
 TIMEOUT_MS = 1000
 CROP_BUFFER = 20
