@@ -28,7 +28,6 @@ class LEDDisplay:
         WearState.WEARING: (0, 255, 0),       # green
         WearState.NOT_WEARING: (255, 0, 0),     # red
     }
-    PIXEL_COUNT = 40
 
     def __init__(self):
         self.strip = None
@@ -48,7 +47,7 @@ class LEDDisplay:
 
         self.strip = neopixel_spi.NeoPixel_SPI(
             board.SPI(),
-            self.PIXEL_COUNT,
+            config.LED_PIXEL_COUNT,
             auto_write=False,
             brightness=config.LED_BRIGHTNESS / 255,
             pixel_order=config.LED_PIXEL_ORDER,
@@ -56,7 +55,7 @@ class LEDDisplay:
         self.clear()
 
     def set_pixel(self, index: int, rgb: Tuple[int, int, int]):
-        if not 0 <= index < self.PIXEL_COUNT:
+        if not 0 <= index < config.LED_PIXEL_COUNT:
             return
 
         if config.LED_SIMULATE:

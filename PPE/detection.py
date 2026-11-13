@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import math
 import queue
 import sys
@@ -42,7 +43,7 @@ STATE_COLORS = {
 }
 
 @dataclass
-class GoggleOutput:
+class GoggleDetections:
     """
     Goggle detections for every tracked face in one frame.
     timestamp: time.monotonic() when the frame reached the goggle pipeline
@@ -52,10 +53,10 @@ class GoggleOutput:
     detections: dict[int, tuple[np.ndarray, dict]]
 
 
-def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
-                        goggle_input_queue: queue.Queue,
-                        goggle_output_queue: queue.Queue,
-                        output_queue: queue.Queue[GoggleOutput],
+def run_goggle_pipeline(input_queue: queue.Queue[scrfd.ScrfdOutput],
+                        goggle_input_queue: queue.Queue[goggles.GoggleInput],
+                        goggle_output_queue: queue.Queue[goggles.GoggleOutput],
+                        output_queue: queue.Queue[GoggleDetections],
                         size: int,
                         score_threshold: float,
                         max_boxes: int,
@@ -65,11 +66,12 @@ def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
 
     Crops are letterboxed to the model input size and pushed through
     goggle_detection.run_inference_pipeline (which owns the Hailo device). Each result
-    comes back paired with the track ID and crop it was computed from, so no matching
-    by index is needed.
+    comes back tagged with the track ID it was computed from, so no matching by index
+    is needed. The crops themselves stay in this thread rather than crossing the
+    inference queues, which already carry the letterboxed copy.
 
     Params:
-        input_queue: Queue of postprocess outputs from SCRFD, each containing "faces_by_id".
+        input_queue: Queue of tracked face crops, keyed by track ID, one dict per frame.
         goggle_input_queue: Queue consumed by goggle_detection.run_inference_pipeline.
         goggle_output_queue: Queue produced by goggle_detection.run_inference_pipeline.
         output_queue: Queue of GoggleOutput, one per SCRFD frame (including frames
@@ -86,26 +88,27 @@ def run_goggle_pipeline(input_queue: queue.Queue[scrfd.SCRFDOutput],
 
         # goggle_detection feeds camera frames to the model without a colour
         # conversion, so the crops are passed through the same way. It hands the
-        # first tuple element back untouched, so it carries the track ID along.
+        # track ID back untouched, so results pair up without matching by index.
         faces_by_id = {
             track_id: face
-            for track_id, face in (input.faces_by_id or {}).items()
+            for track_id, face in (input or {}).items()
             if face.size > 0
         }
         for track_id, face in faces_by_id.items():
-            goggle_input_queue.put(((track_id, face), letterbox_img(face, size=size)))
+            goggle_input_queue.put((track_id, letterbox_img(face, size=size)))
 
         detections = {}
         while len(detections) < len(faces_by_id) and not stop_event.is_set():
             try:
-                (track_id, face), raw_inference = goggle_output_queue.get(timeout=QUEUE_TIMEOUT_S)
+                track_id, raw_inference = goggle_output_queue.get(timeout=QUEUE_TIMEOUT_S)
             except queue.Empty:
                 continue
+            face = faces_by_id[track_id]
             detections[track_id] = (
                 face, extract_detections(face, raw_inference, score_threshold, max_boxes)
             )
 
-        output_queue.put(GoggleOutput(timestamp=timestamp, detections=detections))
+        output_queue.put(GoggleDetections(timestamp=timestamp, detections=detections))
 
 
 def render_face_grid(face_detections: dict[int, tuple[np.ndarray, dict]],
@@ -170,10 +173,10 @@ def render_face_grid(face_detections: dict[int, tuple[np.ndarray, dict]],
 def main() -> None:
     """Runs the SCRFD pipeline followed by the goggles model, and displays the faces."""
     camera = init_rpicam2(CAMERA_WIDTH, CAMERA_HEIGHT)
-    # led_display = LEDDisplay()
+    leds = LEDDisplay()
     assert camera is not None, "Failed to open the Raspberry Pi camera."
-    # if not config.LED_SIMULATE:
-    #     led_display.begin()
+    if not config.LED_SIMULATE:
+        leds.begin()
 
     labels = []
     with open(config.GOGGLE_LABELS_PATH, "r", encoding="utf-8") as f:
@@ -185,16 +188,16 @@ def main() -> None:
 
     safety_glasses_class = labels.index(SAFETY_GLASSES_LABEL)
     state_tracker = GoggleStateTracker(evict_after_frames=EVICT_AFTER_FRAMES)
+    num_frames_with_no_faces = 0
 
     stop_event = threading.Event()
 
-    input_queue = queue.Queue()
-    preprocessed_frames = queue.Queue()
-    inferences = queue.Queue()
-    face_outputs = queue.Queue()
-    goggle_inputs = queue.Queue()
-    goggle_outputs = queue.Queue()
-    outputs = queue.Queue()
+    input_queue = queue.Queue(config.QUEUE_SIZE)
+    preprocessed_frames = queue.Queue(config.QUEUE_SIZE)
+    face_outputs = queue.Queue(config.QUEUE_SIZE)
+    goggle_inputs = queue.Queue(config.QUEUE_SIZE)
+    goggle_outputs = queue.Queue(config.QUEUE_SIZE)
+    outputs = queue.Queue(config.QUEUE_SIZE)
 
     threads = [
         threading.Thread(
@@ -217,6 +220,11 @@ def main() -> None:
         )
     ]
 
+    def thread_error_handler(args):
+        print("An error has been thrown in one of the threads.")
+        os._exit(1)
+    threading.excepthook = thread_error_handler
+
     for thread in threads:
         thread.start()
 
@@ -225,16 +233,26 @@ def main() -> None:
         while True:
             ok, frame = camera.read()
             if ok:
-                input_queue.put(frame)
+                try:
+                    input_queue.put_nowait(frame)
+                except queue.Full:
+                    with queue.mutex:
+                        for _ in range(config.FULL_QUEUE_FRAMES_TO_DROP):
+                            queue.queue.popleft()
+                    continue
 
             # Drain the queue so we always display the most recent result. Every output
             # still goes through the state tracker so no frames are skipped.
             latest = None
+            total_num_faces = 0
+            num_rounds = 0
             while True:
                 try:
                     latest = outputs.get_nowait()
                 except queue.Empty:
                     break
+                total_num_faces += len(latest.detections)
+                num_rounds += 1
                 state_tracker.update(
                     latest.timestamp,
                     {
@@ -242,7 +260,18 @@ def main() -> None:
                         for track_id, (_, detections) in latest.detections.items()
                     },
                 )
-                # led_display.set_state(state_tracker.aggregate_state())
+                leds.set_state(state_tracker.aggregate_state())
+            
+            delay = config.LOOP_PERIOD_SECS
+            if num_rounds > 0:
+                num_frames_with_no_faces = 0
+                avg_faces_per_frame = total_num_faces / num_rounds
+                delay += config.BONUS_DELAY_PER_FACE_SECS * avg_faces_per_frame
+            else:
+                num_frames_with_no_faces += 1
+                if num_frames_with_no_faces > config.NO_FACES_FRAME_THRESHOLD:
+                    delay = config.NO_FACES_DELAY
+            time.sleep(delay)
 
             if latest is not None:
                 cv2.imshow(WINDOW_NAME, render_face_grid(
@@ -256,7 +285,7 @@ def main() -> None:
         for thread in threads:
             thread.join(timeout=THREAD_JOIN_TIMEOUT_S)
         camera.release()
-        # led_display.cleanup()
+        leds.cleanup()
         cv2.destroyAllWindows()
 
 

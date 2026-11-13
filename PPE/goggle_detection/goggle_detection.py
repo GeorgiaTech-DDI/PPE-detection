@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+from functools import partial
+import config
 import json
 import logging
 import queue
 import threading
 from pathlib import Path
+from hailo_bindings_queue import HailoBindingsQueue
 
 import numpy as np
 from hailo_platform import (
@@ -22,16 +25,37 @@ def load_json_file(path: Path) -> dict:
         return json.load(f)
 
 
-def _copy_inference_result(raw):
-    """Copies buffers, since the bindings reuse them across frames."""
-    if isinstance(raw, (list, tuple)):
-        return [np.array(item) for item in raw]
-    return np.array(raw)
+def _copy_inference_result(raw) -> np.ndarray:
+    """Copies buffers, since the bindings reuse them across frames.
 
+    NMS outputs arrive as one array per class and the classes hold different
+    numbers of detections, so the per-class arrays are padded up to a common
+    length before stacking them into a dense [class, detection, 5] array. The
+    padding is zeros, so its score is below any score threshold.
+    """
+    if not isinstance(raw, (list, tuple)):
+        return np.array(raw)
+
+    arrays = [np.asarray(item) for item in raw]
+    if not arrays:
+        return np.array(raw, dtype=np.float32)
+    if len({array.shape for array in arrays}) == 1:
+        return np.stack(arrays)
+
+    max_detections = max(array.shape[0] for array in arrays)
+    return np.stack([
+        np.pad(array, ((0, max_detections - array.shape[0]), *((0, 0),) * (array.ndim - 1)))
+        for array in arrays
+    ])
+
+LetterboxedImg = np.ndarray
+GoggleInput = tuple[int, LetterboxedImg]
+RawInference = dict[str, np.ndarray]
+GoggleOutput = tuple[int, RawInference]
 
 def run_inference_pipeline(network: str,
-                           input_queue: queue.Queue,
-                           output_queue: queue.Queue,
+                           input_queue: queue.Queue[GoggleInput],
+                           output_queue: queue.Queue[GoggleOutput],
                            stop_event: threading.Event) -> None:
     """
     Spins up a loop that performs inference on any preprocessed frames added to
@@ -39,8 +63,9 @@ def run_inference_pipeline(network: str,
 
     Params:
         network: Neural network (HEF) to perform inference with.
-        input_queue: Queue of (original_frame, preprocessed_frame) tuples.
-        output_queue: Queue of (original_frame, raw_inference) tuples.
+        input_queue: Queue of (track_id, preprocessed_frame) tuples.
+        output_queue: Queue of (track_id, raw_inference) tuples. The caller needs
+            the track ID back to match each result to the face it came from.
         stop_event: Event used to stop this pipeline.
     """
     params = VDevice.create_params()
@@ -49,20 +74,19 @@ def run_inference_pipeline(network: str,
 
     with VDevice(params) as vdevice:
         infer_model = vdevice.create_infer_model(network)
+        infer_model.set_batch_size(config.BATCH_SIZE)
         infer_model.input().set_format_type(FormatType.UINT8)
 
         for name in infer_model.output_names:
             infer_model.output(name).set_format_type(FormatType.FLOAT32)
 
         with infer_model.configure() as configured_infer_model:
-            bindings = configured_infer_model.create_bindings()
-            buffer_in = np.empty(infer_model.input().shape, dtype=np.uint8)
-            bindings.input().set_buffer(buffer_in)
-            for name in infer_model.output_names:
-                out_info = infer_model.output(name)
-                bindings.output(name).set_buffer(
-                    np.empty(out_info.shape, dtype=np.float32)
-                )
+
+            available_bindings = HailoBindingsQueue(
+                infer_model,
+                configured_infer_model,
+                config.BATCH_SIZE,
+            )
 
             while not stop_event.is_set():
                 try:
@@ -70,19 +94,35 @@ def run_inference_pipeline(network: str,
                 except queue.Empty:
                     continue
 
-                original_frame, preprocessed_frame = frame
-                buffer_in[:] = preprocessed_frame
-                configured_infer_model.run([bindings], timeout=TIMEOUT_MS)
+                track_id, preprocessed_frame = frame
+                _bindings = available_bindings.get()
+                _bindings.input().get_buffer()[:] = preprocessed_frame
+                configured_infer_model.run_async([_bindings], partial(
+                    goggle_pipeline_callback,
+                    bindings=_bindings,
+                    bindings_queue=available_bindings,
+                    track_id=track_id,
+                    infer_model=infer_model,
+                    output_queue=output_queue
+                ))
 
-                if len(infer_model.output_names) == 1:
-                    buffer = bindings.output().get_buffer()
-                    result = _copy_inference_result(buffer)
-                else:
-                    result = {
-                        name: np.expand_dims(
-                            _copy_inference_result(bindings.output(name).get_buffer()),
-                            axis=0
-                        )
-                        for name in infer_model.output_names
-                    }
-                output_queue.put((original_frame, result))
+# queue size limits (50)
+# stop all threads/cleanup when one thread throws
+                
+
+def goggle_pipeline_callback(
+        completion_info, 
+        bindings, 
+        bindings_queue,
+        track_id, 
+        infer_model, 
+        output_queue):
+    result = {
+        name: np.expand_dims(
+            _copy_inference_result(bindings.output(name).get_buffer()),
+            axis=0
+        )
+        for name in infer_model.output_names
+    }
+    output_queue.put((track_id, result))
+    bindings_queue.put(bindings)

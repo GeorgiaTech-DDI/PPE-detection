@@ -79,13 +79,13 @@ def denormalize_and_rm_pad(box: list, size: int, padding_length: int, input_heig
     return [box[1], box[0], box[3], box[2]]
 
 
-def extract_detections(image: np.ndarray, detections: list, score_threshold: float, max_boxes: int) -> dict:
+def extract_detections(image: np.ndarray, detections: dict[str, np.ndarray], score_threshold: float, max_boxes: int) -> dict:
     """
     Extract detections from the input data.
 
     Args:
         image (np.ndarray): Image to draw on.
-        detections (list): Raw detections from the model.
+        detections (dict[str, np.ndarray]): Raw model outputs keyed by output name.
         score_threshold (float): Rejects any detections with a confidence below this threshold. 
         max_boxes (int): The maximum number of detections to extract.
 
@@ -99,12 +99,17 @@ def extract_detections(image: np.ndarray, detections: list, score_threshold: flo
 
     all_detections = []
 
-    for class_id, detection in enumerate(detections):
-        for det in detection:
-            bbox, score = det[:4], det[4]
-            if score >= score_threshold:
-                denorm_bbox = denormalize_and_rm_pad(bbox, size, padding_length, img_height, img_width)
-                all_detections.append((score, class_id, denorm_bbox))
+    # goggle_detection adds a leading batch dimension to every output stream, and
+    # the model's NMS output is then [batch, class, detection, 5]. Each detection
+    # is [y_min, x_min, y_max, x_max, score] in normalized coordinates, and its
+    # class comes from its position in the class axis.
+    for output in detections.values():
+        for class_id, class_detections in enumerate(output[0]):
+            for det in class_detections:
+                bbox, score = det[:4], det[4]
+                if score >= score_threshold:
+                    denorm_bbox = denormalize_and_rm_pad(bbox, size, padding_length, img_height, img_width)
+                    all_detections.append((score, class_id, denorm_bbox))
 
     # Sort all detections by score descending
     all_detections.sort(reverse=True, key=lambda x: x[0])

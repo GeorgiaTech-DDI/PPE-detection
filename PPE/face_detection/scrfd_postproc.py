@@ -1,6 +1,7 @@
 from typing import Optional
 
 import numpy as np
+import config
 import cv2
 from dataclasses import dataclass
 
@@ -140,3 +141,30 @@ class SCRFDPostProc:
             results.face_landmarks = landmarks
 
         return results
+
+    def crop_faces(self,
+            inferences: PostProcessedSCRFDInference,
+            frame: np.ndarray) -> list[np.ndarray]:
+        # Set up variables for postprocess cropping
+        img_h, img_w = frame.shape[:2]
+        crop_buffer = round(config.CROP_BUFFER * img_w / 640)
+        cropped_faces = []
+        for (x_min, y_min, x_max, y_max) in inferences.detection_boxes:
+            # Find normalized width and height, compare to mean
+            width = x_max - x_min
+            height = y_max - y_min
+
+            # Convert normalized coords to pixel coords
+            px_min = x_min * img_w
+            px_max = x_max * img_w
+            py_min = y_min * img_h
+            py_max = y_max * img_h
+
+            crop_x1 = max(0, int(px_min - crop_buffer))
+            crop_y1 = max(0, int(py_min - crop_buffer))
+            crop_x2 = min(img_w, int(px_max + crop_buffer))
+            crop_y2 = min(img_h, int(py_max + crop_buffer))
+
+            cropped_faces.append(frame[crop_y1:crop_y2, crop_x1:crop_x2])
+
+        return cropped_faces
