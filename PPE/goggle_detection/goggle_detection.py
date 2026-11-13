@@ -7,6 +7,7 @@ import queue
 import threading
 from pathlib import Path
 from hailo_bindings_queue import HailoBindingsQueue
+from yolo_26_decoder import Yolo26Decoder
 
 import numpy as np
 from hailo_platform import (
@@ -72,10 +73,15 @@ def run_inference_pipeline(network: str,
     params.group_id = "SHARED"
     params.scheduling_algorithm = HailoSchedulingAlgorithm.ROUND_ROBIN
 
+    decoder = None
+
     with VDevice(params) as vdevice:
         infer_model = vdevice.create_infer_model(network)
         infer_model.set_batch_size(config.BATCH_SIZE)
         infer_model.input().set_format_type(FormatType.UINT8)
+
+        if (config.YOLO_MODEL_VERSION == 26):
+            decoder = Yolo26Decoder(infer_model.output_names, (640, 640), conf_thr=config.SCORE_THRESHOLD)
 
         for name in infer_model.output_names:
             infer_model.output(name).set_format_type(FormatType.FLOAT32)
@@ -103,7 +109,8 @@ def run_inference_pipeline(network: str,
                     bindings_queue=available_bindings,
                     track_id=track_id,
                     infer_model=infer_model,
-                    output_queue=output_queue
+                    output_queue=output_queue,
+                    decoder=decoder
                 ))
 
 # queue size limits (50)
@@ -116,13 +123,24 @@ def goggle_pipeline_callback(
         bindings_queue,
         track_id, 
         infer_model, 
-        output_queue):
-    result = {
-        name: np.expand_dims(
-            _copy_inference_result(bindings.output(name).get_buffer()),
-            axis=0
-        )
-        for name in infer_model.output_names
-    }
+        output_queue,
+        decoder):
+    if (decoder is None):
+        result = {
+            name: np.expand_dims(
+                _copy_inference_result(bindings.output(name).get_buffer()),
+                axis=0
+            )
+            for name in infer_model.output_names
+        }
+    else:
+        raw = {
+            name: np.array(bindings.output(name).get_buffer())[None]
+            for name in infer_model.output_names
+        }
+        bindings_queue.put(bindings)
+        result = {"detections": decoder(raw)}
+        output_queue.put((track_id, result))
+        return
     output_queue.put((track_id, result))
     bindings_queue.put(bindings)
