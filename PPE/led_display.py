@@ -24,15 +24,15 @@ class LEDDisplay:
     """
 
     DEFAULT_COLORS = {
-        WearState.UNKNOWN: (0, 0, 0),
+        WearState.UNKNOWN: (255, 191, 0),
         WearState.WEARING: (0, 255, 0),       # green
         WearState.NOT_WEARING: (255, 0, 0),     # red
     }
 
     def __init__(self):
         self.strip = None
-        self.current_state = WearState.UNKNOWN
-
+        self.current_state = None
+    
     def begin(self):
         if config.LED_SIMULATE:
             print("[LED] Simulation mode enabled")
@@ -53,6 +53,7 @@ class LEDDisplay:
             pixel_order=config.LED_PIXEL_ORDER,
         )
         self.clear()
+        self.set_state(WearState.UNKNOWN)
 
     def set_pixel(self, index: int, rgb: Tuple[int, int, int]):
         if not 0 <= index < config.LED_PIXEL_COUNT:

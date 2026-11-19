@@ -37,7 +37,7 @@ SAFETY_GLASSES_LABEL = "safety_glasses"
 EVICT_AFTER_FRAMES = int(scrfd.FRAME_RATE / 30.0 * scrfd.LOST_TRACK_BUFFER)
 
 STATE_COLORS = {
-    WearState.UNKNOWN: (160, 160, 160),
+    WearState.UNKNOWN: (255, 191, 0),
     WearState.WEARING: (0, 200, 0),
     WearState.NOT_WEARING: (0, 0, 220),
 }
@@ -221,6 +221,7 @@ def main() -> None:
     ]
 
     def thread_error_handler(args):
+        print(args)
         print("An error has been thrown in one of the threads.")
         os._exit(1)
     threading.excepthook = thread_error_handler

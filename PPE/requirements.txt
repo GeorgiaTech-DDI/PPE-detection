@@ -1,3 +1,4 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 adafruit_blinka==10.1.0
 adafruit_circuitpython_neopixel_spi==1.0.16
 hailort==5.1.1
@@ -5,3 +6,5 @@ numpy==2.5.4
 opencv_python==4.10.0.84
 picamera2==0.3.37
 supervision==0.30.0
+torch
+ultralytics
